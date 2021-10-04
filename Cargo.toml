@@ -15,6 +15,9 @@ homepage = "https://github.com/phip1611/tar-no-std"
 repository = "https://github.com/phip1611/tar-no-std"
 documentation = "https://docs.rs/tar-no-std"
 
+# required because "env_logger" uses "log" but with dependency to std..
+resolver = "2"
+
 [dependencies]
 bitflags = "1.3"
 arrayvec = { version = "0.7", default-features = false }
