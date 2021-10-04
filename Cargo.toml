@@ -1,0 +1,24 @@
+[package]
+name = "tar-no-std"
+description = """
+Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero allocations.
+The crate is simple and only supports reading of "basic" archives, therefore no extensions, such
+as GNU Longname. The maximum supported file size is 100 characters including the NULL-byte.
+"""
+version = "0.1.0"
+edition = "2018"
+keywords = ["tar", "tarball", "archive"]
+categories = ["data-structures", "no-std", "parser-implementations"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/phip1611/tar-no-std"
+repository = "https://github.com/phip1611/tar-no-std"
+documentation = "https://docs.rs/tar-no-std"
+
+[dependencies]
+bitflags = "1.3"
+arrayvec = { version = "0.7", default-features = false }
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.9"
