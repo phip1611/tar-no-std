@@ -162,15 +162,19 @@ impl<'a> Iterator for ArchiveIterator<'a> {
         }
 
         // fetch data of file from next block(s)
-        let block_count = hdr.payload_block_count();
-        let i_begin = self.block_index * BLOCKSIZE;
-        let i_end = i_begin + block_count * BLOCKSIZE;
-        debug_assert!(i_end <= self.archive.data.len(), "index ouf of range!");
-        // +1: hdr itself + data blocks
-        self.block_index += block_count + 1;
-
+        let data_block_count = hdr.payload_block_count();
+        // +1: skip hdr block itself and start at data!
+        // i_begin is the byte begin index of this file in the array of the whole archive
+        let i_begin = (self.block_index + 1) * BLOCKSIZE;
+        // i_end is the exclusive byte end index of the data of the current file
+        let i_end = i_begin + data_block_count * BLOCKSIZE;
         let file_block_bytes = &self.archive.data[i_begin..i_end];
+        // because each block is 512 bytes long, the file is not necessarily a multiple of 512 bytes
         let file_bytes = &file_block_bytes[0..hdr.size.val()];
+
+        // in next iteration: start at next Archive entry header
+        // +1 for current hdr block itself + all data blocks
+        self.block_index += data_block_count + 1;
 
         Some(ArchiveEntry::new(
             ArrayString::from_str(hdr.name.as_string().as_str()).unwrap(),
@@ -182,6 +186,7 @@ impl<'a> Iterator for ArchiveIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::str;
     use std::vec::Vec;
 
     #[test]
@@ -230,11 +235,26 @@ mod tests {
         assert_eq!(entries[0].filename().as_str(), "bye_world_513b.txt");
         assert_eq!(entries[0].size(), 513);
         assert_eq!(entries[0].data().len(), 513);
+        assert_eq!(
+            unsafe { str::from_utf8_unchecked(entries[0].data) },
+            include_str!("../tests/bye_world_513b.txt")
+        );
+
         assert_eq!(entries[1].filename().as_str(), "hello_world_513b.txt");
         assert_eq!(entries[1].size(), 513);
         assert_eq!(entries[1].data().len(), 513);
+        assert_eq!(
+            unsafe { str::from_utf8_unchecked(entries[1].data) },
+            include_str!("../tests/hello_world_513b.txt")
+        );
+
         assert_eq!(entries[2].filename().as_str(), "hello_world.txt");
         assert_eq!(entries[2].size(), 12);
         assert_eq!(entries[2].data().len(), 12);
+        assert_eq!(
+            unsafe { str::from_utf8_unchecked(entries[2].data) },
+            "Hello World\n",
+            "file content must match"
+        );
     }
 }
