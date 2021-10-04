@@ -39,7 +39,7 @@ fn main() {
 ```
 
 ## Compression
-If your tar file is compressed, e.g. bei `.tar.gz`/`gzip`, you need to uncompress the bytes first
+If your tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress the bytes first
 (e.g. by a *gzip* library). Afterwards, this crate can read and write the Tar archive format from the bytes.
 
 ## MSRV
