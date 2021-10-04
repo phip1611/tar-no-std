@@ -3,9 +3,11 @@ name = "tar-no-std"
 description = """
 Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero allocations.
 The crate is simple and only supports reading of "basic" archives, therefore no extensions, such
-as GNU Longname. The maximum supported file size is 100 characters including the NULL-byte.
+as GNU Longname. The maximum supported file name length is 100 characters including the NULL-byte.
+The maximum supported file size is 8GiB. Also, directories are not supported yet but only flat
+collections of files.
 """
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 keywords = ["tar", "tarball", "archive"]
 categories = ["data-structures", "no-std", "parser-implementations"]
