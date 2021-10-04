@@ -54,6 +54,7 @@ impl Debug for Size {
     }
 }
 
+/// Wrapper around the UNIX file permissions given in octal ASCII.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Mode(StaticCString<8>);
