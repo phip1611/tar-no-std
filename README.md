@@ -19,11 +19,24 @@ GNU Extensions such as sparse files, incremental archives, and long filename ext
 [This link](https://www.gnu.org/software/tar/manual/html_section/Formats.html) gives a good overview over possible
 archive formats and their limitations.
 
+## Example
+```rust
+fn main() {
+    // log: not mandatory
+    std::env::set_var("RUST_LOG", "trace");
+    env_logger::init();
 
+    // also works in no_std environment
+    let archive = include_bytes!("../tests/gnu_tar_default.tar");
+    let archive = TarArchive::new(archive);
+    let entries = archive.entries().collect::<Vec<_>>();
+    println!("{:#?}", entries);
+}
+```
 
 ## Compression
-If your tar file is compressed, e.g. bei `gzip`, you need to uncompress the bytes first (e.g. by a *deflate* algorithm),
-before
+If your tar file is compressed, e.g. bei `.tar.gz`/`gzip`, you need to uncompress the bytes first
+(e.g. by a *gzip* library). Afterwards, this crate can read and write the Tar archive format from the bytes.
 
 ## MSRV
 The MSRV is 1.51.0 stable.

@@ -40,6 +40,11 @@ SOFTWARE.
 //! archive formats and their limitations.
 
 #![cfg_attr(not(test), no_std)]
+#![deny(rustdoc::all)]
+#![allow(rustdoc::missing_doc_code_examples)]
+#![deny(clippy::all)]
+#![deny(clippy::missing_const_for_fn)]
+#![deny(missing_debug_implementations)]
 
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]

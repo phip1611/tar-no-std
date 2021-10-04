@@ -30,7 +30,7 @@ use core::fmt::{Debug, Formatter};
 use core::ptr;
 use core::str::FromStr;
 
-/// Describes an entry in a archive.
+/// Describes an entry in an archive.
 /// Currently only supports files but no directories.
 pub struct ArchiveEntry<'a> {
     filename: ArrayString<100>,
@@ -40,7 +40,7 @@ pub struct ArchiveEntry<'a> {
 
 #[allow(unused)]
 impl<'a> ArchiveEntry<'a> {
-    pub fn new(filename: ArrayString<100>, data: &'a [u8]) -> Self {
+    pub const fn new(filename: ArrayString<100>, data: &'a [u8]) -> Self {
         ArchiveEntry {
             filename,
             data,
@@ -49,17 +49,17 @@ impl<'a> ArchiveEntry<'a> {
     }
 
     /// Filename of the entry. Max 99 characters.
-    pub fn filename(&self) -> ArrayString<100> {
+    pub const fn filename(&self) -> ArrayString<100> {
         self.filename
     }
 
     /// Data of the file.
-    pub fn data(&self) -> &'a [u8] {
+    pub const fn data(&self) -> &'a [u8] {
         self.data
     }
 
     /// Filesize in bytes.
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         self.size
     }
 }
@@ -95,7 +95,7 @@ impl<'a> TarArchive<'a> {
 
     /// Iterates over all entries of the TAR Archive.
     /// Returns items of type [`ArchiveEntry`].
-    pub fn entries(&self) -> ArchiveIterator {
+    pub const fn entries(&self) -> ArchiveIterator {
         ArchiveIterator::new(self)
     }
 }
@@ -109,7 +109,7 @@ pub struct ArchiveIterator<'a> {
 }
 
 impl<'a> ArchiveIterator<'a> {
-    pub fn new(archive: &'a TarArchive<'a>) -> Self {
+    pub const fn new(archive: &'a TarArchive<'a>) -> Self {
         Self {
             archive,
             block_index: 0,
@@ -117,7 +117,7 @@ impl<'a> ArchiveIterator<'a> {
     }
 
     /// Returns a pointer to the next Header.
-    fn next_hdr(&self, block_index: usize) -> *const PosixHeader {
+    const fn next_hdr(&self, block_index: usize) -> *const PosixHeader {
         let hdr_ptr = &self.archive.data[block_index * BLOCKSIZE];
         let hdr_ptr = hdr_ptr as *const u8;
         hdr_ptr as *const PosixHeader
@@ -155,6 +155,10 @@ impl<'a> Iterator for ArchiveIterator<'a> {
                 hdr.typeflag
             );
             return None;
+        }
+
+        if hdr.name.is_empty() {
+            log::warn!("Found empty file name",);
         }
 
         // fetch data of file from next block(s)

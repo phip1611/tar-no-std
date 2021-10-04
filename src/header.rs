@@ -83,7 +83,7 @@ pub struct StaticCString<const N: usize>([u8; N]);
 #[allow(unused)]
 impl<const N: usize> StaticCString<N> {
     /// Constructor.
-    fn new(bytes: [u8; N]) -> Self {
+    const fn new(bytes: [u8; N]) -> Self {
         Self(bytes)
     }
 
@@ -91,6 +91,11 @@ impl<const N: usize> StaticCString<N> {
     pub fn len(&self) -> usize {
         // not as efficient as it could be but negligible
         self.as_string().len()
+    }
+
+    /// Returns if the string without NULL-byte is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns a string without null bytes.
@@ -114,7 +119,7 @@ impl<const N: usize> Debug for StaticCString<N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut debug = f.debug_tuple("Name");
         let str = self.as_string();
-        if str.len() == 0 {
+        if str.is_empty() {
             debug.field(&"<empty>");
         } else {
             debug.field(&str);
