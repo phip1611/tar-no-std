@@ -1,4 +1,4 @@
-# `tar-no_std` - Parse Tar Archives (Tarballs)
+# `tar-no-std` - Parse Tar Archives (Tarballs)
 
 _Due to historical reasons, there are several formats of tar archives. All of them are based on the same principles,
 but have some subtle differences that often make them incompatible with each other._ [[0]]
