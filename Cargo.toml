@@ -7,7 +7,7 @@ as GNU Longname. The maximum supported file name length is 100 characters includ
 The maximum supported file size is 8GiB. Also, directories are not supported yet but only flat
 collections of files.
 """
-version = "0.1.2"
+version = "0.1.3"
 edition = "2018"
 keywords = ["tar", "tarball", "archive"]
 categories = ["data-structures", "no-std", "parser-implementations"]

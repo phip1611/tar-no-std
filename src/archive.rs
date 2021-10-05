@@ -27,7 +27,6 @@ use crate::header::PosixHeader;
 use crate::{TypeFlag, BLOCKSIZE};
 use arrayvec::ArrayString;
 use core::fmt::{Debug, Formatter};
-use core::ptr;
 use core::str::FromStr;
 
 /// Describes an entry in an archive.
@@ -116,11 +115,10 @@ impl<'a> ArchiveIterator<'a> {
         }
     }
 
-    /// Returns a pointer to the next Header.
-    const fn next_hdr(&self, block_index: usize) -> *const PosixHeader {
+    /// Returns a reference to the next Header.
+    fn next_hdr(&self, block_index: usize) -> &'a PosixHeader {
         let hdr_ptr = &self.archive.data[block_index * BLOCKSIZE];
-        let hdr_ptr = hdr_ptr as *const u8;
-        hdr_ptr as *const PosixHeader
+        unsafe { (hdr_ptr as *const u8).cast::<PosixHeader>().as_ref() }.unwrap()
     }
 }
 
@@ -134,11 +132,10 @@ impl<'a> Iterator for ArchiveIterator<'a> {
         }
 
         let hdr = self.next_hdr(self.block_index);
-        let hdr = unsafe { ptr::read(hdr) };
 
         // check if we found end of archive
         if hdr.is_zero_block() {
-            let next_hdr = unsafe { ptr::read(self.next_hdr(self.block_index + 1)) };
+            let next_hdr = self.next_hdr(self.block_index + 1);
             if next_hdr.is_zero_block() {
                 // gracefully terminated Archive
                 log::debug!("End of Tar archive with two zero blocks!");

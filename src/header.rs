@@ -284,9 +284,9 @@ mod tests {
     use crate::BLOCKSIZE;
     use std::mem::size_of;
 
-    fn bytes_to_archive(bytes: &[u8]) -> PosixHeader {
-        let hdr = bytes.as_ptr() as *const PosixHeader;
-        unsafe { core::ptr::read(hdr) }
+    /// Casts the bytes to a reference to a PosixhHeader.
+    fn bytes_to_archive(bytes: &[u8]) -> &PosixHeader {
+        unsafe { (bytes.as_ptr() as *const PosixHeader).as_ref() }.unwrap()
     }
 
     #[test]
