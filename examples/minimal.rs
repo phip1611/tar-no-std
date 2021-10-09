@@ -35,6 +35,5 @@ fn main() {
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);
     println!("content of last file:");
-    let last_file_content = unsafe { core::str::from_utf8_unchecked(entries[2].data()) };
-    println!("{:#?}", last_file_content);
+    println!("{:#?}", entries[2].data_as_str().expect("Invalid UTF-8") );
 }

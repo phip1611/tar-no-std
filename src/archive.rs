@@ -27,7 +27,7 @@ use crate::header::PosixHeader;
 use crate::{TypeFlag, BLOCKSIZE};
 use arrayvec::ArrayString;
 use core::fmt::{Debug, Formatter};
-use core::str::FromStr;
+use core::str::{FromStr, Utf8Error};
 
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
@@ -55,6 +55,11 @@ impl<'a> ArchiveEntry<'a> {
     /// Data of the file.
     pub const fn data(&self) -> &'a [u8] {
         self.data
+    }
+
+    /// Data of the file as string slice, if data is valid UTF-8.
+    pub fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
+        core::str::from_utf8(self.data)
     }
 
     /// Filesize in bytes.
@@ -183,7 +188,6 @@ impl<'a> Iterator for ArchiveIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::str;
     use std::vec::Vec;
 
     #[test]
@@ -233,7 +237,7 @@ mod tests {
         assert_eq!(entries[0].size(), 513);
         assert_eq!(entries[0].data().len(), 513);
         assert_eq!(
-            unsafe { str::from_utf8_unchecked(entries[0].data) },
+            entries[0].data_as_str().expect("Invalid UTF-8"),
             include_str!("../tests/bye_world_513b.txt")
         );
 
@@ -241,7 +245,7 @@ mod tests {
         assert_eq!(entries[1].size(), 513);
         assert_eq!(entries[1].data().len(), 513);
         assert_eq!(
-            unsafe { str::from_utf8_unchecked(entries[1].data) },
+            entries[1].data_as_str().expect("Invalid UTF-8"),
             include_str!("../tests/hello_world_513b.txt")
         );
 
@@ -249,7 +253,7 @@ mod tests {
         assert_eq!(entries[2].size(), 12);
         assert_eq!(entries[2].data().len(), 12);
         assert_eq!(
-            unsafe { str::from_utf8_unchecked(entries[2].data) },
+            entries[2].data_as_str().expect("Invalid UTF-8"),
             "Hello World\n",
             "file content must match"
         );
