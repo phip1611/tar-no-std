@@ -82,7 +82,7 @@ impl<'a> Debug for ArchiveEntry<'a> {
 }
 
 /// Type that owns bytes on the heap, that represents a Tar archive.
-/// Unlike [`TarArchive`], this type is useful, if you need to own the
+/// Unlike [`TarArchiveRef`], this type is useful, if you need to own the
 /// data as long as you need the archive, but not longer.
 ///
 /// This is only available with the `alloc` feature of this crate.
@@ -137,7 +137,7 @@ impl From<TarArchive> for Box<[u8]> {
 }
 
 /// Wrapper type around bytes, which represents a Tar archive.
-/// Unlike [`TarArchiveRef`], this uses only a reference to data.
+/// Unlike [`TarArchive`], this uses only a reference to data.
 #[derive(Debug)]
 pub struct TarArchiveRef<'a> {
     data: &'a [u8],

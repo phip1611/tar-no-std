@@ -196,6 +196,9 @@ impl PosixHeader {
     }
 }
 
+/// Describes the kind of payload, that follows after a
+/// [`PosixHeader`]. The properties of this payload are
+/// described inside the header.
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(u8)]
 #[allow(unused)]

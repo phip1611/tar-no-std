@@ -40,8 +40,8 @@ fn main() {
 ```
 
 ## Alloc Feature
-This crate allows the additional Cargo build time feature `alloc`. When this is used, the crate
-also provides the type `TarArchive`, which owns the data on the heap.
+This crate allows the usage of the additional Cargo build time feature `alloc`. When this is used,
+the crate also provides the type `TarArchive`, which owns the data on the heap.
 
 ## Compression (`tar.gz`)
 If your tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress the bytes first
