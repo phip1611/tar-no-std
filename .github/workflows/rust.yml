@@ -21,14 +21,14 @@ jobs:
         steps:
             -   uses: actions/checkout@v2
             -   name: Build
-                run: cargo build --verbose
-            # use some no_std target
+                run: cargo build --all-targets --verbose --features all
+            # use some arbitrary no_std target
             -   name: Install no_std target thumbv7em-none-eabihf
                 run: rustup target add thumbv7em-none-eabihf
             -   name: Build (no_std)
-                run: cargo build --verbose --target thumbv7em-none-eabihf
+                run: cargo build --verbose --target thumbv7em-none-eabihf --features all
             -   name: Run tests
-                run: cargo test --verbose
+                run: cargo test --verbose --features all
 
     style_checks:
         runs-on: ubuntu-latest
@@ -43,6 +43,6 @@ jobs:
             -   name: Rustfmt
                 run: cargo fmt -- --check
             -   name: Clippy
-                run: cargo clippy
+                run: cargo clippy --features all
             -   name: Rustdoc
-                run: cargo doc
+                run: cargo doc --features all

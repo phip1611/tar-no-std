@@ -7,7 +7,7 @@ as GNU Longname. The maximum supported file name length is 100 characters includ
 The maximum supported file size is 8GiB. Also, directories are not supported yet but only flat
 collections of files.
 """
-version = "0.1.4"
+version = "0.1.5"
 edition = "2018"
 keywords = ["tar", "tarball", "archive"]
 categories = ["data-structures", "no-std", "parser-implementations"]
@@ -19,6 +19,11 @@ documentation = "https://docs.rs/tar-no-std"
 
 # required because "env_logger" uses "log" but with dependency to std..
 resolver = "2"
+
+[features]
+default = []
+alloc = []
+all = ["alloc"]
 
 [dependencies]
 bitflags = "1.3"

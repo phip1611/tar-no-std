@@ -21,8 +21,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-use tar_no_std::TarArchiveRef;
+use tar_no_std::TarArchive;
 
+/// This example needs the `alloc` feature.
 fn main() {
     // log: not mandatory
     std::env::set_var("RUST_LOG", "trace");
@@ -30,7 +31,8 @@ fn main() {
 
     // also works in no_std environment (except the println!, of course)
     let archive = include_bytes!("../tests/gnu_tar_default.tar");
-    let archive = TarArchiveRef::new(archive);
+    let archive_heap_owned = archive.to_vec().into_boxed_slice();
+    let archive = TarArchive::new(archive_heap_owned);
     // Vec needs an allocator of course, but the library itself doesn't need one
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);

@@ -19,8 +19,10 @@ GNU Extensions such as sparse files, incremental archives, and long filename ext
 [This link](https://www.gnu.org/software/tar/manual/html_section/Formats.html) gives a good overview over possible
 archive formats and their limitations.
 
-## Example
+## Example (without `alloc`-feature)
 ```rust
+use tar_no_std::TarArchiveRef;
+
 fn main() {
     // log: not mandatory
     std::env::set_var("RUST_LOG", "trace");
@@ -28,7 +30,7 @@ fn main() {
 
     // also works in no_std environment (except the println!, of course)
     let archive = include_bytes!("../tests/gnu_tar_default.tar");
-    let archive = TarArchive::new(archive);
+    let archive = TarArchiveRef::new(archive);
     // Vec needs an allocator of course, but the library itself doesn't need one
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);
@@ -37,7 +39,11 @@ fn main() {
 }
 ```
 
-## Compression
+## Alloc Feature
+This crate allows the additional Cargo build time feature `alloc`. When this is used, the crate
+also provides the type `TarArchive`, which owns the data on the heap.
+
+## Compression (`tar.gz`)
 If your tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress the bytes first
 (e.g. by a *gzip* library). Afterwards, this crate can read and write the Tar archive format from the bytes.
 
