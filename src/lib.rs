@@ -41,7 +41,7 @@ SOFTWARE.
 //!
 //! # Example
 //! ```rust
-//! use tar_no_std::TarArchive;
+//! use tar_no_std::TarArchiveRef;
 //!
 //! // log: not mandatory
 //! std::env::set_var("RUST_LOG", "trace");
@@ -49,7 +49,7 @@ SOFTWARE.
 //!
 //! // also works in no_std environment (except the println!, of course)
 //! let archive = include_bytes!("../tests/gnu_tar_default.tar");
-//! let archive = TarArchive::new(archive);
+//! let archive = TarArchiveRef::new(archive);
 //! // Vec needs an allocator of course, but the library itself doesn't need one
 //! let entries = archive.entries().collect::<Vec<_>>();
 //! println!("{:#?}", entries);
@@ -68,6 +68,9 @@ SOFTWARE.
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]
 extern crate std;
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 /// Each Archive Entry (either Header or Data Block) is a block of 512 bytes.
 const BLOCKSIZE: usize = 512;

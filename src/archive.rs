@@ -21,10 +21,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! Module for [`TarArchive`].
+//! Module for [`TarArchiveRef`]. If the `alloc`-feature is enabled, this crate
+//! also exports `TarArchive`, which owns data on the heap.
 
 use crate::header::PosixHeader;
 use crate::{TypeFlag, BLOCKSIZE};
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
 use arrayvec::ArrayString;
 use core::fmt::{Debug, Formatter};
 use core::str::{FromStr, Utf8Error};
@@ -78,15 +81,72 @@ impl<'a> Debug for ArchiveEntry<'a> {
     }
 }
 
-/// Wrapper type around the bytes, which represents an archive.
+/// Type that owns bytes on the heap, that represents a Tar archive.
+/// Unlike [`TarArchive`], this type is useful, if you need to own the
+/// data as long as you need the archive, but not longer.
+///
+/// This is only available with the `alloc` feature of this crate.
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
-pub struct TarArchive<'a> {
+pub struct TarArchive {
+    data: Box<[u8]>,
+}
+
+#[cfg(feature = "alloc")]
+impl TarArchive {
+    /// Creates a new archive type, that owns the data on the heap. The provided byte array is
+    /// interpreted as bytes in Tar archive format.
+    pub fn new(data: Box<[u8]>) -> Self {
+        assert_eq!(
+            data.len() % BLOCKSIZE,
+            0,
+            "data must be a multiple of BLOCKSIZE={}, len is {}",
+            BLOCKSIZE,
+            data.len(),
+        );
+        Self { data }
+    }
+
+    /// Iterates over all entries of the Tar archive.
+    /// Returns items of type [`ArchiveEntry`].
+    /// See also [`ArchiveIterator`].
+    pub fn entries(&self) -> ArchiveIterator {
+        ArchiveIterator::new(self.data.as_ref())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl From<Box<[u8]>> for TarArchive {
+    fn from(data: Box<[u8]>) -> Self {
+        Self::new(data)
+    }
+}
+
+/*#[cfg(feature = "alloc")]
+impl Into<Box<[u8]>> for TarArchive {
+    fn into(self) -> Box<[u8]> {
+        self.data
+    }
+}*/
+
+#[cfg(feature = "alloc")]
+impl From<TarArchive> for Box<[u8]> {
+    fn from(ar: TarArchive) -> Self {
+        ar.data
+    }
+}
+
+/// Wrapper type around bytes, which represents a Tar archive.
+/// Unlike [`TarArchiveRef`], this uses only a reference to data.
+#[derive(Debug)]
+pub struct TarArchiveRef<'a> {
     data: &'a [u8],
 }
 
 #[allow(unused)]
-impl<'a> TarArchive<'a> {
-    /// Interprets the provided byte array as Tar archive.
+impl<'a> TarArchiveRef<'a> {
+    /// Creates a new archive wrapper type. The provided byte array is interpreted as
+    /// bytes in Tar archive format.
     pub fn new(data: &'a [u8]) -> Self {
         assert_eq!(
             data.len() % BLOCKSIZE,
@@ -97,32 +157,33 @@ impl<'a> TarArchive<'a> {
         Self { data }
     }
 
-    /// Iterates over all entries of the TAR Archive.
+    /// Iterates over all entries of the Tar archive.
     /// Returns items of type [`ArchiveEntry`].
+    /// See also [`ArchiveIterator`].
     pub const fn entries(&self) -> ArchiveIterator {
-        ArchiveIterator::new(self)
+        ArchiveIterator::new(self.data)
     }
 }
 
-/// Iterator over the files. Each iteration step starts
+/// Iterator over the files of the archive. Each iteration starts
 /// at the next Tar header entry.
 #[derive(Debug)]
 pub struct ArchiveIterator<'a> {
-    archive: &'a TarArchive<'a>,
+    archive_data: &'a [u8],
     block_index: usize,
 }
 
 impl<'a> ArchiveIterator<'a> {
-    pub const fn new(archive: &'a TarArchive<'a>) -> Self {
+    pub const fn new(archive: &'a [u8]) -> Self {
         Self {
-            archive,
+            archive_data: archive,
             block_index: 0,
         }
     }
 
     /// Returns a reference to the next Header.
     fn next_hdr(&self, block_index: usize) -> &'a PosixHeader {
-        let hdr_ptr = &self.archive.data[block_index * BLOCKSIZE];
+        let hdr_ptr = &self.archive_data[block_index * BLOCKSIZE];
         unsafe { (hdr_ptr as *const u8).cast::<PosixHeader>().as_ref() }.unwrap()
     }
 }
@@ -131,7 +192,7 @@ impl<'a> Iterator for ArchiveIterator<'a> {
     type Item = ArchiveEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.block_index * BLOCKSIZE >= self.archive.data.len() {
+        if self.block_index * BLOCKSIZE >= self.archive_data.len() {
             log::warn!("Reached end of Tar archive data without finding zero/end blocks!");
             return None;
         }
@@ -170,7 +231,7 @@ impl<'a> Iterator for ArchiveIterator<'a> {
         let i_begin = (self.block_index + 1) * BLOCKSIZE;
         // i_end is the exclusive byte end index of the data of the current file
         let i_end = i_begin + data_block_count * BLOCKSIZE;
-        let file_block_bytes = &self.archive.data[i_begin..i_end];
+        let file_block_bytes = &self.archive_data[i_begin..i_end];
         // because each block is 512 bytes long, the file is not necessarily a multiple of 512 bytes
         let file_bytes = &file_block_bytes[0..hdr.size.val()];
 
@@ -192,22 +253,38 @@ mod tests {
 
     #[test]
     fn test_archive_list() {
-        let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_default.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         println!("{:#?}", entries);
     }
 
     #[test]
     fn test_archive_entries() {
-        let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_default.tar"));
+        #[cfg(feature = "alloc")]
+        {
+            let data = include_bytes!("../tests/gnu_tar_default.tar")
+                .to_vec()
+                .into_boxed_slice();
+            let archive = TarArchive::new(data.clone());
+            let entries = archive.entries().collect::<Vec<_>>();
+            assert_archive_content(&entries);
+
+            let archive = TarArchive::from(data.clone());
+            let entries = archive.entries().collect::<Vec<_>>();
+            assert_archive_content(&entries);
+
+            assert_eq!(data, archive.into());
+        }
+
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_gnu.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_gnu.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_oldgnu.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_oldgnu.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
@@ -221,11 +298,11 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);*/
 
-        let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_ustar.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_v7.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_v7.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
     }
