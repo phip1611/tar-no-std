@@ -5,10 +5,14 @@ but have some subtle differences that often make them incompatible with each oth
 
 Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero allocations. If you have a standard
 environment and need full feature support, I recommend the use of <https://crates.io/crates/tar> instead.
+
+## Limitations
 The crate is simple and only supports reading of "basic" archives, therefore no extensions, such
 as *GNU Longname*. The maximum supported file name length is 100 characters including the NULL-byte.
 The maximum supported file size is 8GiB. Also, directories are not supported yet but only flat
 collections of files.
+
+## Use Case
 
 This library is useful, if you write a kernel or a similar low-level application, which needs
 "a bunch of files" from an archive ("init ramdisk"). The Tar file could for example come
@@ -45,7 +49,8 @@ the crate also provides the type `TarArchive`, which owns the data on the heap.
 
 ## Compression (`tar.gz`)
 If your tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress the bytes first
-(e.g. by a *gzip* library). Afterwards, this crate can read and write the Tar archive format from the bytes.
+(e.g. by a *gzip* library). Afterwards, this crate can read the Tar archive format from the uncompressed
+bytes.
 
 ## MSRV
 The MSRV is 1.51.0 stable.
