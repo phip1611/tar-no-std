@@ -59,11 +59,22 @@ SOFTWARE.
 //! ```
 
 #![cfg_attr(not(test), no_std)]
-#![deny(rustdoc::all)]
-#![allow(rustdoc::missing_doc_code_examples)]
-#![deny(clippy::all)]
-#![deny(clippy::missing_const_for_fn)]
+#![deny(
+    clippy::all,
+    clippy::cargo,
+    clippy::nursery,
+    // clippy::restriction,
+    // clippy::pedantic
+)]
+// now allow a few rules which are denied by the above statement
+// --> they are ridiculous and not necessary
+#![allow(
+    clippy::suboptimal_flops,
+    clippy::redundant_pub_crate,
+    clippy::fallible_impl_from
+)]
 #![deny(missing_debug_implementations)]
+#![deny(rustdoc::all)]
 
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]
