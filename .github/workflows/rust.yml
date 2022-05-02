@@ -17,7 +17,7 @@ jobs:
         rust:
           - stable
           - nightly
-          - 1.51.0 # MSVR
+          - 1.52.1 # MSVR
     steps:
       - uses: actions/checkout@v2
       # Important preparation step: override the latest default Rust version in GitHub CI

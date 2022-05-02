@@ -53,7 +53,7 @@ If your tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress
 bytes.
 
 ## MSRV
-The MSRV is 1.51.0 stable.
+The MSRV is 1.52.1 stable.
 
 
 [0]: https://www.gnu.org/software/tar/manual/html_section/Formats.html
