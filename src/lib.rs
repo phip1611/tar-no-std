@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2021 Philipp Schuster
+Copyright (c) 2023 Philipp Schuster
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,23 +21,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero allocations.
-//! If you have a standard environment and need full feature support, I recommend the use of
-//! <https://crates.io/crates/tar> instead.
+//! Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero
+//! allocations. If you have a standard environment and need full feature
+//! support, I recommend the use of <https://crates.io/crates/tar> instead.
 //!
-//! The crate is simple and only supports reading of "basic" archives, therefore no extensions, such
-//! as GNU Longname. The maximum supported file name length is 100 characters including the NULL-byte.
-//! The maximum supported file size is 8GiB. Also, directories are not supported yet but only flat
-//! collections of files.
+//! The crate is simple and only supports reading of "basic" archives, therefore
+//! no extensions, such as GNU Longname. The maximum supported file name length
+//! is 100 characters including the NULL-byte. The maximum supported file size
+//! is 8 GiB. Also, directories are not supported yet but only flat collections
+//! of files.
 //!
-//! This library is useful, if you write a kernel or a similar low-level application, which needs
-//! "a bunch of files" from an archive ("init ram disk"). The Tar file could for example come
-//! as a Multiboot2 boot module provided by the bootloader.
+//! This library is useful, if you write a kernel or a similar low-level
+//! application, which needs "a bunch of files" from an archive ("init ram
+//! disk"). The Tar file could for example come as a Multiboot2 boot module
+//! provided by the bootloader.
 //!
-//! This crate focuses on extracting files from uncompressed Tar archives created with default options by **GNU Tar**.
-//! GNU Extensions such as sparse files, incremental archives, and long filename extension are not supported yet.
-//! [This link](https://www.gnu.org/software/tar/manual/html_section/Formats.html) gives a good overview over possible
-//! archive formats and their limitations.
+//! This crate focuses on extracting files from uncompressed Tar archives
+//! created with default options by **GNU Tar**. GNU Extensions such as sparse
+//! files, incremental archives, and long filename extension are not supported
+//! yet. [gnu.org](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
+//! provides a good overview over possible archive formats and their
+//! limitations.
 //!
 //! # Example
 //! ```rust
@@ -85,6 +89,8 @@ extern crate alloc;
 
 /// Each Archive Entry (either Header or Data Block) is a block of 512 bytes.
 const BLOCKSIZE: usize = 512;
+/// Maximum filename length of the base Tar format including the terminating NULL-byte.
+const FILENAME_MAX_LEN: usize = 100;
 
 mod archive;
 mod header;

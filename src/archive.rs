@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2021 Philipp Schuster
+Copyright (c) 2023 Philipp Schuster
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,24 +25,25 @@ SOFTWARE.
 //! also exports `TarArchive`, which owns data on the heap.
 
 use crate::header::PosixHeader;
-use crate::{TypeFlag, BLOCKSIZE};
+use crate::{TypeFlag, BLOCKSIZE, FILENAME_MAX_LEN};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 use arrayvec::ArrayString;
 use core::fmt::{Debug, Formatter};
 use core::str::{FromStr, Utf8Error};
+use log::warn;
 
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
 pub struct ArchiveEntry<'a> {
-    filename: ArrayString<100>,
+    filename: ArrayString<FILENAME_MAX_LEN>,
     data: &'a [u8],
     size: usize,
 }
 
 #[allow(unused)]
 impl<'a> ArchiveEntry<'a> {
-    pub const fn new(filename: ArrayString<100>, data: &'a [u8]) -> Self {
+    const fn new(filename: ArrayString<FILENAME_MAX_LEN>, data: &'a [u8]) -> Self {
         ArchiveEntry {
             filename,
             data,
@@ -50,8 +51,9 @@ impl<'a> ArchiveEntry<'a> {
         }
     }
 
-    /// Filename of the entry. Max 99 characters.
-    pub const fn filename(&self) -> ArrayString<100> {
+    /// Filename of the entry with a maximum of 100 characters (including the
+    /// terminating NULL-byte).
+    pub const fn filename(&self) -> ArrayString<{ FILENAME_MAX_LEN }> {
         self.filename
     }
 
@@ -122,13 +124,6 @@ impl From<Box<[u8]>> for TarArchive {
     }
 }
 
-/*#[cfg(feature = "alloc")]
-impl Into<Box<[u8]>> for TarArchive {
-    fn into(self) -> Box<[u8]> {
-        self.data
-    }
-}*/
-
 #[cfg(feature = "alloc")]
 impl From<TarArchive> for Box<[u8]> {
     fn from(ar: TarArchive) -> Self {
@@ -137,7 +132,7 @@ impl From<TarArchive> for Box<[u8]> {
 }
 
 /// Wrapper type around bytes, which represents a Tar archive.
-/// Unlike [`TarArchive`], this uses only a reference to data.
+/// Unlike [`TarArchive`], this uses only a reference to the data.
 #[derive(Debug)]
 pub struct TarArchiveRef<'a> {
     data: &'a [u8],
@@ -193,7 +188,7 @@ impl<'a> Iterator for ArchiveIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.block_index * BLOCKSIZE >= self.archive_data.len() {
-            log::warn!("Reached end of Tar archive data without finding zero/end blocks!");
+            warn!("Reached end of Tar archive data without finding zero/end blocks!");
             return None;
         }
 
@@ -221,28 +216,40 @@ impl<'a> Iterator for ArchiveIterator<'a> {
         }
 
         if hdr.name.is_empty() {
-            log::warn!("Found empty file name",);
+            warn!("Found empty file name",);
         }
 
-        // fetch data of file from next block(s)
-        let data_block_count = hdr.payload_block_count();
+        let hdr_size = hdr.size.val();
+        if let Err(e) = hdr_size {
+            warn!("Can't parse the file size from the header block. Stop iterating Tar archive. {e:#?}");
+            return None;
+        }
+        let hdr_size = hdr_size.unwrap();
+
+        // Fetch data of file from next block(s).
+        // .unwrap() is fine as we checked that hdr.size().val() is valid
+        // above
+        let data_block_count = hdr.payload_block_count().unwrap();
+
         // +1: skip hdr block itself and start at data!
         // i_begin is the byte begin index of this file in the array of the whole archive
         let i_begin = (self.block_index + 1) * BLOCKSIZE;
         // i_end is the exclusive byte end index of the data of the current file
         let i_end = i_begin + data_block_count * BLOCKSIZE;
         let file_block_bytes = &self.archive_data[i_begin..i_end];
-        // because each block is 512 bytes long, the file is not necessarily a multiple of 512 bytes
-        let file_bytes = &file_block_bytes[0..hdr.size.val()];
+        // Each block is 512 bytes long, but the file size is not necessarily a
+        // multiple of 512.
+        let file_bytes = &file_block_bytes[0..hdr_size];
 
         // in next iteration: start at next Archive entry header
         // +1 for current hdr block itself + all data blocks
         self.block_index += data_block_count + 1;
 
-        Some(ArchiveEntry::new(
-            ArrayString::from_str(hdr.name.as_string().as_str()).unwrap(),
-            file_bytes,
-        ))
+        let filename = ArrayString::from_str(hdr.name.as_string().as_str());
+        // .unwrap is fine as the capacity is MUST be ok.
+        let filename = filename.unwrap();
+
+        Some(ArchiveEntry::new(filename, file_bytes))
     }
 }
 
@@ -258,24 +265,9 @@ mod tests {
         println!("{:#?}", entries);
     }
 
+    /// Tests to read the entries from existing archives in various Tar flavors.
     #[test]
     fn test_archive_entries() {
-        #[cfg(feature = "alloc")]
-        {
-            let data = include_bytes!("../tests/gnu_tar_default.tar")
-                .to_vec()
-                .into_boxed_slice();
-            let archive = TarArchive::new(data.clone());
-            let entries = archive.entries().collect::<Vec<_>>();
-            assert_archive_content(&entries);
-
-            let archive = TarArchive::from(data.clone());
-            let entries = archive.entries().collect::<Vec<_>>();
-            assert_archive_content(&entries);
-
-            assert_eq!(data, archive.into());
-        }
-
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar"));
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
@@ -307,30 +299,52 @@ mod tests {
         assert_archive_content(&entries);
     }
 
+    /// Like [`test_archive_entries`] but with additional `alloc` functionality.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn test_archive_entries_alloc() {
+        let data = include_bytes!("../tests/gnu_tar_default.tar")
+            .to_vec()
+            .into_boxed_slice();
+        let archive = TarArchive::new(data.clone());
+        let entries = archive.entries().collect::<Vec<_>>();
+        assert_archive_content(&entries);
+
+        // Test that the archive can be transformed into owned heap data.
+        assert_eq!(data, archive.into());
+    }
+
+    /// Tests that the parsed archive matches the expected order. The tarballs
+    /// the tests directory were created once by me with files in the order
+    /// specified in this test.
     fn assert_archive_content(entries: &[ArchiveEntry]) {
         assert_eq!(entries.len(), 3);
-        // order in that I stored the files into the archive
+
         assert_eq!(entries[0].filename().as_str(), "bye_world_513b.txt");
         assert_eq!(entries[0].size(), 513);
         assert_eq!(entries[0].data().len(), 513);
         assert_eq!(
-            entries[0].data_as_str().expect("Invalid UTF-8"),
-            include_str!("../tests/bye_world_513b.txt")
+            entries[0].data_as_str().expect("Should be valid UTF-8"),
+            // .replace: Ensure that the test also works on Windows
+            include_str!("../tests/bye_world_513b.txt").replace("\r\n", "\n")
         );
 
+        // Test that an entry that needs two 512 byte data blocks is read
+        // properly.
         assert_eq!(entries[1].filename().as_str(), "hello_world_513b.txt");
         assert_eq!(entries[1].size(), 513);
         assert_eq!(entries[1].data().len(), 513);
         assert_eq!(
-            entries[1].data_as_str().expect("Invalid UTF-8"),
-            include_str!("../tests/hello_world_513b.txt")
+            entries[1].data_as_str().expect("Should be valid UTF-8"),
+            // .replace: Ensure that the test also works on Windows
+            include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
         );
 
         assert_eq!(entries[2].filename().as_str(), "hello_world.txt");
         assert_eq!(entries[2].size(), 12);
         assert_eq!(entries[2].data().len(), 12);
         assert_eq!(
-            entries[2].data_as_str().expect("Invalid UTF-8"),
+            entries[2].data_as_str().expect("Should be valid UTF-8"),
             "Hello World\n",
             "file content must match"
         );

@@ -39,7 +39,7 @@ fn main() {
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);
     println!("content of last file:");
-    println!("{:#?}", entries[2].data_as_str().expect("Invalid UTF-8") );
+    println!("{:#?}", entries[2].data_as_str().expect("Should be valid UTF-8"));
 }
 ```
 

@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2021 Philipp Schuster
+Copyright (c) 2023 Philipp Schuster
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -30,9 +30,10 @@ SOFTWARE.
 
 #![allow(non_upper_case_globals)]
 
-use crate::BLOCKSIZE;
+use crate::{BLOCKSIZE, FILENAME_MAX_LEN};
 use arrayvec::ArrayString;
 use core::fmt::{Debug, Formatter};
+use core::num::ParseIntError;
 
 /// The file size is encoded as octal ASCII number inside a Tar header.
 #[derive(Copy, Clone)]
@@ -41,8 +42,8 @@ pub struct Size(StaticCString<12>);
 
 impl Size {
     /// Returns the octal ASCII number as actual size in bytes.
-    pub fn val(&self) -> usize {
-        usize::from_str_radix(self.0.as_string().as_str(), 8).unwrap()
+    pub fn val(&self) -> Result<usize, ParseIntError> {
+        usize::from_str_radix(self.0.as_string().as_str(), 8)
     }
 }
 
@@ -54,16 +55,24 @@ impl Debug for Size {
     }
 }
 
+#[derive(Debug)]
+pub enum ModeError {
+    ParseInt(ParseIntError),
+    IllegalMode,
+}
+
 /// Wrapper around the UNIX file permissions given in octal ASCII.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Mode(StaticCString<8>);
 
 impl Mode {
-    pub fn to_flags(self) -> ModeFlags {
+    /// Parses the [`ModeFlags`] from the mode string.
+    pub fn to_flags(self) -> Result<ModeFlags, ModeError> {
         let octal_number_str = self.0.as_string();
-        let bits = u64::from_str_radix(octal_number_str.as_str(), 8).unwrap();
-        ModeFlags::from_bits(bits).unwrap()
+        let bits =
+            u64::from_str_radix(octal_number_str.as_str(), 8).map_err(ModeError::ParseInt)?;
+        ModeFlags::from_bits(bits).ok_or(ModeError::IllegalMode)
     }
 }
 
@@ -75,8 +84,11 @@ impl Debug for Mode {
     }
 }
 
-/// A C-String that is stored in a static array. All unused
-/// chars must be a NULL-byte.
+/// A C-String that is stored in a static array. There is always a terminating
+/// NULL-byte.
+///
+/// The content is likely to be UTF-8/ASCII, but that is not verified by this
+/// type.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct StaticCString<const N: usize>([u8; N]);
@@ -99,19 +111,16 @@ impl<const N: usize> StaticCString<N> {
         self.len() == 0
     }
 
-    /// Returns a string without null bytes.
+    /// Returns a string that includes all characters until the first null.
     pub fn as_string(&self) -> ArrayString<N> {
         let mut string = ArrayString::new();
-        // copy all bytes (=ASCII) into string
         self.0
             .clone()
             .iter()
-            // remove all zero bytes; there is always one
-            // zero byte at the end. Furtherore, the other
-            // unused bytes are also zero, but not part of the
-            // string.
-            .filter(|x| **x != 0)
-            .for_each(|b| string.push(*b as char));
+            .copied()
+            // Take all chars until the terminating null.
+            .take_while(|byte| *byte != 0)
+            .for_each(|byte| string.push(byte as char));
         string
     }
 }
@@ -145,7 +154,7 @@ impl<const N: usize> Debug for StaticCString<N> {
 pub struct PosixHeader {
     /// Name. There is always a null byte, therefore
     /// the max len is 99.
-    pub name: StaticCString<100>,
+    pub name: StaticCString<{ FILENAME_MAX_LEN }>,
     pub mode: Mode,
     pub uid: [u8; 8],
     pub gid: [u8; 8],
@@ -156,7 +165,7 @@ pub struct PosixHeader {
     pub typeflag: TypeFlag,
     /// Name. There is always a null byte, therefore
     /// the max len is 99.
-    pub linkname: StaticCString<100>,
+    pub linkname: StaticCString<{ FILENAME_MAX_LEN }>,
     pub magic: StaticCString<6>,
     pub version: StaticCString<2>,
     /// Username. There is always a null byte, therefore
@@ -175,16 +184,14 @@ pub struct PosixHeader {
 }
 
 impl PosixHeader {
-    /// Returns the number of blocks that are required to
-    /// read the whole file content.
-    pub fn payload_block_count(&self) -> usize {
-        let div = self.size.val() / BLOCKSIZE;
-        let modulo = self.size.val() % BLOCKSIZE;
-        if modulo > 0 {
-            (div + 1) as usize
-        } else {
-            div as usize
-        }
+    /// Returns the number of blocks that are required to read the whole file
+    /// content. Returns an error, if the file size can't be parsed from the
+    /// header.
+    pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
+        let div = self.size.val()? / BLOCKSIZE;
+        let modulo = self.size.val()? % BLOCKSIZE;
+        let block_count = if modulo > 0 { div + 1 } else { div };
+        Ok(block_count)
     }
 
     /// A Tar archive is terminated, if a end-of-archive entry, which consists of two 512 blocks
@@ -199,7 +206,7 @@ impl PosixHeader {
 /// Describes the kind of payload, that follows after a
 /// [`PosixHeader`]. The properties of this payload are
 /// described inside the header.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 #[allow(unused)]
 pub enum TypeFlag {
@@ -252,7 +259,9 @@ pub enum TypeFlag {
 }
 
 bitflags::bitflags! {
-    /// UNIX file permissions on octal format.
+    /// UNIX file permissions in octal format.
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ModeFlags: u64 {
         /// Set UID on execution.
         const SetUID = 0o4000;
