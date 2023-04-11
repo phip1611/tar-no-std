@@ -253,6 +253,8 @@ pub enum TypeFlag {
 
 bitflags::bitflags! {
     /// UNIX file permissions on octal format.
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ModeFlags: u64 {
         /// Set UID on execution.
         const SetUID = 0o4000;
