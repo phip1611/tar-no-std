@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2021 Philipp Schuster
+Copyright (c) 2023 Philipp Schuster
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,5 +35,8 @@ fn main() {
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);
     println!("content of last file:");
-    println!("{:#?}", entries[2].data_as_str().expect("Invalid UTF-8"));
+    println!(
+        "{:#?}",
+        entries[2].data_as_str().expect("Should be valid UTF-8")
+    );
 }

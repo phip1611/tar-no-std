@@ -1,23 +1,22 @@
 name: Build
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
+        runs-on:
+          - windows-latest
+          - ubuntu-latest
         rust:
           - stable
           - nightly
-          - 1.52.1 # MSVR
+          - 1.60.0 # MSVR
     steps:
       - uses: actions/checkout@v2
       # Important preparation step: override the latest default Rust version in GitHub CI
@@ -28,21 +27,21 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
       - name: Build
-        run: cargo build --all-targets --verbose --features all
+        run: cargo build --all-targets --verbose --features alloc
       # use some arbitrary no_std target
       - name: Install no_std target thumbv7em-none-eabihf
         run: rustup target add thumbv7em-none-eabihf
       - name: Build (no_std)
-        run: cargo build --verbose --target thumbv7em-none-eabihf --features all
+        run: cargo build --verbose --target thumbv7em-none-eabihf --features alloc
       - name: Run tests
-        run: cargo test --verbose --features all
+        run: cargo test --verbose --features alloc
 
   style_checks:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
-          - stable
+          - 1.60.0
     steps:
       - uses: actions/checkout@v2
       # Important preparation step: override the latest default Rust version in GitHub CI
@@ -55,6 +54,6 @@ jobs:
       - name: Rustfmt
         run: cargo fmt -- --check
       - name: Clippy
-        run: cargo clippy --features all
+        run: cargo clippy --features alloc
       - name: Rustdoc
-        run: cargo doc --features all
+        run: cargo doc --no-deps --document-private-items --features alloc
