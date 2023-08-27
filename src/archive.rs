@@ -192,19 +192,33 @@ impl<'a> Iterator for ArchiveIterator<'a> {
             return None;
         }
 
-        let hdr = self.next_hdr(self.block_index);
+        let mut hdr = self.next_hdr(self.block_index);
 
-        // check if we found end of archive
-        if hdr.is_zero_block() {
-            let next_hdr = self.next_hdr(self.block_index + 1);
-            if next_hdr.is_zero_block() {
-                // gracefully terminated Archive
-                log::debug!("End of Tar archive with two zero blocks!");
-            } else {
-                log::warn!("Zero block found at end of Tar archive, but only one instead of two!");
+        loop {
+            // check if we found end of archive
+            if hdr.is_zero_block() {
+                let next_hdr = self.next_hdr(self.block_index + 1);
+                if next_hdr.is_zero_block() {
+                    // gracefully terminated Archive
+                    log::debug!("End of Tar archive with two zero blocks!");
+                } else {
+                    log::warn!("Zero block found at end of Tar archive, but only one instead of two!");
+                }
+                // end of archive
+                return None;
             }
-            // end of archive
-            return None;
+
+            // Ignore directory entries, i.e. yield only regular files. Works as
+            // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
+            if hdr.typeflag != TypeFlag::DIRTYPE {
+                break;
+            }
+
+            // in next iteration: start at next Archive entry header
+            // +1 for current hdr block itself + all data blocks
+            let data_block_count: usize = hdr.payload_block_count().unwrap();
+            self.block_index += data_block_count + 1;
+            hdr = self.next_hdr(self.block_index);
         }
 
         if hdr.typeflag != TypeFlag::AREGTYPE && hdr.typeflag != TypeFlag::REGTYPE {
@@ -299,6 +313,16 @@ mod tests {
         assert_archive_content(&entries);
     }
 
+    /// Tests to read the entries from an existing tarball with a directory in it
+    #[test]
+    fn test_archive_with_dir_entries() {
+        // tarball created with:
+        //     $ gtar -cf tests/gnu_tar_default_with_dir.tar --exclude '*.tar' tests
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"));
+        let entries = archive.entries().collect::<Vec<_>>();
+        assert_archive_with_dir_content(&entries);
+    }
+
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
     #[cfg(feature = "alloc")]
     #[test]
@@ -314,15 +338,23 @@ mod tests {
         assert_eq!(data, archive.into());
     }
 
+    /// Test that the entry's contents match the expected content.
+    fn assert_entry_content(entry: &ArchiveEntry,
+                            filename: &str,
+                            size: usize,
+                        ) {
+        assert_eq!(entry.filename().as_str(), filename);
+        assert_eq!(entry.size(), size);
+        assert_eq!(entry.data().len(), size);
+    }
+
     /// Tests that the parsed archive matches the expected order. The tarballs
     /// the tests directory were created once by me with files in the order
     /// specified in this test.
     fn assert_archive_content(entries: &[ArchiveEntry]) {
         assert_eq!(entries.len(), 3);
 
-        assert_eq!(entries[0].filename().as_str(), "bye_world_513b.txt");
-        assert_eq!(entries[0].size(), 513);
-        assert_eq!(entries[0].data().len(), 513);
+        assert_entry_content(&entries[0], "bye_world_513b.txt", 513);
         assert_eq!(
             entries[0].data_as_str().expect("Should be valid UTF-8"),
             // .replace: Ensure that the test also works on Windows
@@ -331,22 +363,50 @@ mod tests {
 
         // Test that an entry that needs two 512 byte data blocks is read
         // properly.
-        assert_eq!(entries[1].filename().as_str(), "hello_world_513b.txt");
-        assert_eq!(entries[1].size(), 513);
-        assert_eq!(entries[1].data().len(), 513);
+        assert_entry_content(&entries[1], "hello_world_513b.txt", 513);
         assert_eq!(
             entries[1].data_as_str().expect("Should be valid UTF-8"),
             // .replace: Ensure that the test also works on Windows
             include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
         );
 
-        assert_eq!(entries[2].filename().as_str(), "hello_world.txt");
-        assert_eq!(entries[2].size(), 12);
-        assert_eq!(entries[2].data().len(), 12);
+        assert_entry_content(&entries[2], "hello_world.txt", 12);
         assert_eq!(
             entries[2].data_as_str().expect("Should be valid UTF-8"),
             "Hello World\n",
             "file content must match"
         );
     }
+
+
+    /// Tests that the parsed archive matches the expected order and the filename includes
+    /// the directory name. The tarballs the tests directory were created once by me with files
+    /// in the order specified in this test.
+    fn assert_archive_with_dir_content(entries: &[ArchiveEntry]) {
+        assert_eq!(entries.len(), 3);
+
+        assert_entry_content(&entries[0], "tests/hello_world.txt", 12);
+        assert_eq!(
+            entries[0].data_as_str().expect("Should be valid UTF-8"),
+            "Hello World\n",
+            "file content must match"
+        );
+
+        // Test that an entry that needs two 512 byte data blocks is read
+        // properly.
+        assert_entry_content(&entries[1], "tests/bye_world_513b.txt", 513);
+        assert_eq!(
+            entries[1].data_as_str().expect("Should be valid UTF-8"),
+            // .replace: Ensure that the test also works on Windows
+            include_str!("../tests/bye_world_513b.txt").replace("\r\n", "\n")
+        );
+
+        assert_entry_content(&entries[2], "tests/hello_world_513b.txt", 513);
+        assert_eq!(
+            entries[2].data_as_str().expect("Should be valid UTF-8"),
+            // .replace: Ensure that the test also works on Windows
+            include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
+        );
+    }
+
 }
