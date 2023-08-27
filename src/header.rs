@@ -223,35 +223,35 @@ pub enum TypeFlag {
     /// This flag represents a file linked to another file, of any type, previously archived. Such
     /// files are identified in Unix by each file having the same device and inode number. The
     /// linked-to name is specified in the linkname field with a trailing null.
-    LINK = 1,
+    LINK = b'1',
     /// This represents a symbolic link to another file. The linked-to name is specified in the
     /// linkname field with a trailing null.
-    SYMTYPE = 2,
+    SYMTYPE = b'2',
     /// Represents character special files and block special files respectively. In this case the
     /// devmajor and devminor fields will contain the major and minor device numbers respectively.
     /// Operating systems may map the device specifications to their own local specification, or
     /// may ignore the entry.
-    CHRTYPE = 3,
+    CHRTYPE = b'3',
     /// Represents character special files and block special files respectively. In this case the
     /// devmajor and devminor fields will contain the major and minor device numbers respectively.
     /// Operating systems may map the device specifications to their own local specification, or
     /// may ignore the entry.
-    BLKTYPE = 4,
+    BLKTYPE = b'4',
     /// This flag specifies a directory or sub-directory. The directory name in the name field
     /// should end with a slash. On systems where disk allocation is performed on a directory
     /// basis, the size field will contain the maximum number of bytes (which may be rounded to
     /// the nearest disk block allocation unit) which the directory may hold. A size field of zero
     /// indicates no such limiting. Systems which do not support limiting in this manner should
     /// ignore the size field.
-    DIRTYPE = 5,
+    DIRTYPE = b'5',
     /// This specifies a FIFO special file. Note that the archiving of a FIFO file archives the
     /// existence of this file and not its contents.
-    FIFOTYPE = 6,
+    FIFOTYPE = b'6',
     /// This specifies a contiguous file, which is the same as a normal file except that, in
     /// operating systems which support it, all its space is allocated contiguously on the disk.
     /// Operating systems which do not allow contiguous allocation should silently treat this type
     /// as a normal file.
-    CONTTYPE = 7,
+    CONTTYPE = b'7',
     /// Extended header referring to the next file in the archive
     XHDTYPE = b'x',
     /// Global extended header
