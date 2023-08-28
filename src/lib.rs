@@ -91,13 +91,9 @@ extern crate alloc;
 const BLOCKSIZE: usize = 512;
 /// Maximum filename length of the base Tar format including the terminating NULL-byte.
 const FILENAME_MAX_LEN: usize = 100;
-/// Maximum long filename length of the base Tar format including the prefix a '/', a filename and terminating NULL-byte.
-const PREFIXED_FILENAME_MAX_LEN: usize = 257;
 
 mod archive;
 mod header;
-mod fixed_len_string;
 
 pub use archive::*;
 pub use header::*;
-pub use fixed_len_string::*;
