@@ -162,7 +162,6 @@ impl<'a> TarArchiveRef<'a> {
 
 /// Iterator over the files of the archive. Each iteration starts
 /// at the next Tar header entry.
-
 #[derive(Debug)]
 pub struct ArchiveIterator<'a> {
     archive_data: &'a [u8],

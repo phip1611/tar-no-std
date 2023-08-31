@@ -24,6 +24,10 @@ resolver = "2"
 default = []
 alloc = []
 
+[[example]]
+name = "alloc_feature"
+required-features = ["alloc"]
+
 [dependencies]
 bitflags = "2.0"
 log = { version = "0.4", default-features = false }
