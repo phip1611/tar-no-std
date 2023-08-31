@@ -63,7 +63,8 @@ impl<'a> ArchiveEntry<'a> {
     }
 
     /// Data of the file as string slice, if data is valid UTF-8.
-    pub const fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
         core::str::from_utf8(self.data)
     }
 
