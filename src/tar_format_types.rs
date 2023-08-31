@@ -36,7 +36,7 @@ impl<const N: usize> TarFormatString<N> {
 
     // True if the string is NULL terminated
     pub const fn is_nul_terminated(&self) -> bool {
-        return self.bytes[N - 1] == 0;
+        self.bytes[N - 1] == 0
     }
 
     /// Returns the length of the string (ignoring NULL bytes).
@@ -106,13 +106,15 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     where
         T: num_traits::Num,
     {
-        match memchr::memchr2(32, 0, &self.0.bytes) {
-            None => T::from_str_radix(self.0.as_str(), R),
-            Some(idx) => {
-                let sub_str = from_utf8(&self.0.bytes[..idx]).expect("byte array is not UTF-8");
-                T::from_str_radix(sub_str, 8)
-            }
-        }
+        memchr::memchr2(32, 0, &self.0.bytes).map_or_else(
+            || T::from_str_radix(self.0.as_str(), R),
+            |idx| {
+                T::from_str_radix(
+                    from_utf8(&self.0.bytes[..idx]).expect("byte array is not UTF-8"),
+                    8,
+                )
+            },
+        )
     }
 }
 

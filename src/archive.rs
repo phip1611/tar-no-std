@@ -63,7 +63,7 @@ impl<'a> ArchiveEntry<'a> {
     }
 
     /// Data of the file as string slice, if data is valid UTF-8.
-    pub fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
+    pub const fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
         core::str::from_utf8(self.data)
     }
 
@@ -264,17 +264,12 @@ impl<'a> Iterator for ArchiveIterator<'a> {
 
         let mut filename: TarFormatString<256> =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
-        if hdr.magic.as_str() == "ustar" && hdr.version.as_str() == "00" {
-            if !hdr.prefix.is_empty() {
-                filename.append(&hdr.prefix);
-                filename.append(&TarFormatString::<1>::new([b'/']));
-            }
-            filename.append(&hdr.name);
-            Some(ArchiveEntry::new(filename, file_bytes))
-        } else {
-            filename.append(&hdr.name);
-            Some(ArchiveEntry::new(filename, file_bytes))
+        if hdr.magic.as_str() == "ustar" && hdr.version.as_str() == "00" && !hdr.prefix.is_empty() {
+            filename.append(&hdr.prefix);
+            filename.append(&TarFormatString::<1>::new([b'/']));
         }
+        filename.append(&hdr.name);
+        Some(ArchiveEntry::new(filename, file_bytes))
     }
 }
 
