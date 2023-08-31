@@ -8,9 +8,8 @@ environment and need full feature support, I recommend the use of <https://crate
 
 ## Limitations
 The crate is simple and only supports reading of "basic" archives, therefore no extensions, such
-as *GNU Longname*. The maximum supported file name length is 100 characters including the NULL-byte.
-The maximum supported file size is 8GiB. Also, directories are not supported yet but only flat
-collections of files.
+as GNU Longname. The maximum supported file name length is 256 characters excluding the NULL-byte (using the tar name/prefix longname implementation). The maximum supported file size is 8GiB. Directories are supported, but only regular fields are yielded in iteration.
+
 
 ## Use Case
 

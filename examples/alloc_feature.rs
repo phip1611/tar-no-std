@@ -21,9 +21,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+
+#[cfg(not(feature = "alloc"))]
+fn main(){}
+
+#[cfg(feature = "alloc")]
 use tar_no_std::TarArchive;
 
 /// This example needs the `alloc` feature.
+#[cfg(feature = "alloc")]
 fn main() {
     // log: not mandatory
     std::env::set_var("RUST_LOG", "trace");
