@@ -23,7 +23,7 @@ SOFTWARE.
 */
 
 #[cfg(not(feature = "alloc"))]
-fn main(){}
+fn main() {}
 
 #[cfg(feature = "alloc")]
 use tar_no_std::TarArchive;

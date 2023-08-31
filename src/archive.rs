@@ -203,7 +203,9 @@ impl<'a> Iterator for ArchiveIterator<'a> {
                     // gracefully terminated Archive
                     log::debug!("End of Tar archive with two zero blocks!");
                 } else {
-                    log::warn!("Zero block found at end of Tar archive, but only one instead of two!");
+                    log::warn!(
+                        "Zero block found at end of Tar archive, but only one instead of two!"
+                    );
                 }
                 // end of archive
                 return None;
@@ -260,7 +262,8 @@ impl<'a> Iterator for ArchiveIterator<'a> {
         // +1 for current hdr block itself + all data blocks
         self.block_index += data_block_count + 1;
 
-        let mut filename: TarFormatString<256> = TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new ([0;POSIX_1003_MAX_FILENAME_LEN]);
+        let mut filename: TarFormatString<256> =
+            TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
         if hdr.magic.as_str() == "ustar" && hdr.version.as_str() == "00" {
             if !hdr.prefix.is_empty() {
                 filename.append(&hdr.prefix);
@@ -351,7 +354,8 @@ mod tests {
         // tarball created with:
         //     $ gtar -cf tests/gnu_tar_default_with_dir.tar --exclude '*.tar' --exclude '012345678*' tests
         {
-            let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"));
+            let archive =
+                TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"));
             let entries = archive.entries().collect::<Vec<_>>();
 
             assert_archive_with_dir_content(&entries);
@@ -366,7 +370,6 @@ mod tests {
             assert_archive_with_dir_content(&entries);
         }
     }
-
 
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
     #[cfg(feature = "alloc")]
@@ -384,10 +387,7 @@ mod tests {
     }
 
     /// Test that the entry's contents match the expected content.
-    fn assert_entry_content(entry: &ArchiveEntry,
-                            filename: &str,
-                            size: usize,
-                        ) {
+    fn assert_entry_content(entry: &ArchiveEntry, filename: &str, size: usize) {
         assert_eq!(entry.filename().as_str(), filename);
         assert_eq!(entry.size(), size);
         assert_eq!(entry.data().len(), size);
@@ -423,7 +423,6 @@ mod tests {
         );
     }
 
-
     /// Tests that the parsed archive matches the expected order and the filename includes
     /// the directory name. The tarballs the tests directory were created once by me with files
     /// in the order specified in this test.
@@ -453,5 +452,4 @@ mod tests {
             include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
         );
     }
-
 }

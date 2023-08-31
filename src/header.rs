@@ -30,7 +30,7 @@ SOFTWARE.
 
 #![allow(non_upper_case_globals)]
 
-use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatString, TarFormatOctal, TarFormatDecimal};
+use crate::{TarFormatDecimal, TarFormatOctal, TarFormatString, BLOCKSIZE, NAME_LEN, PREFIX_LEN};
 use core::fmt::{Debug, Formatter};
 use core::num::ParseIntError;
 
@@ -48,8 +48,7 @@ pub struct Mode(TarFormatOctal<8>);
 impl Mode {
     /// Parses the [`ModeFlags`] from the mode string.
     pub fn to_flags(self) -> Result<ModeFlags, ModeError> {
-        let bits =
-            self.0.as_number::<u64>().map_err(ModeError::ParseInt)?;
+        let bits = self.0.as_number::<u64>().map_err(ModeError::ParseInt)?;
         ModeFlags::from_bits(bits).ok_or(ModeError::IllegalMode)
     }
 }
