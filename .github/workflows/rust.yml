@@ -16,7 +16,7 @@ jobs:
         rust:
           - stable
           - nightly
-          - 1.60.0 # MSVR
+          - 1.63.0 # MSVR
     steps:
       - uses: actions/checkout@v2
       # Important preparation step: override the latest default Rust version in GitHub CI
@@ -41,7 +41,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.60.0
+          - 1.63.0
     steps:
       - uses: actions/checkout@v2
       # Important preparation step: override the latest default Rust version in GitHub CI

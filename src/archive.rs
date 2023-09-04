@@ -25,25 +25,25 @@ SOFTWARE.
 //! also exports `TarArchive`, which owns data on the heap.
 
 use crate::header::PosixHeader;
-use crate::{TypeFlag, BLOCKSIZE, FILENAME_MAX_LEN};
+use crate::tar_format_types::TarFormatString;
+use crate::{TypeFlag, BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
-use arrayvec::ArrayString;
 use core::fmt::{Debug, Formatter};
-use core::str::{FromStr, Utf8Error};
+use core::str::Utf8Error;
 use log::warn;
 
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
 pub struct ArchiveEntry<'a> {
-    filename: ArrayString<FILENAME_MAX_LEN>,
+    filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
     data: &'a [u8],
     size: usize,
 }
 
 #[allow(unused)]
 impl<'a> ArchiveEntry<'a> {
-    const fn new(filename: ArrayString<FILENAME_MAX_LEN>, data: &'a [u8]) -> Self {
+    const fn new(filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>, data: &'a [u8]) -> Self {
         ArchiveEntry {
             filename,
             data,
@@ -53,7 +53,7 @@ impl<'a> ArchiveEntry<'a> {
 
     /// Filename of the entry with a maximum of 100 characters (including the
     /// terminating NULL-byte).
-    pub const fn filename(&self) -> ArrayString<{ FILENAME_MAX_LEN }> {
+    pub const fn filename(&self) -> TarFormatString<{ POSIX_1003_MAX_FILENAME_LEN }> {
         self.filename
     }
 
@@ -63,6 +63,7 @@ impl<'a> ArchiveEntry<'a> {
     }
 
     /// Data of the file as string slice, if data is valid UTF-8.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
         core::str::from_utf8(self.data)
     }
@@ -192,19 +193,35 @@ impl<'a> Iterator for ArchiveIterator<'a> {
             return None;
         }
 
-        let hdr = self.next_hdr(self.block_index);
+        let mut hdr = self.next_hdr(self.block_index);
 
-        // check if we found end of archive
-        if hdr.is_zero_block() {
-            let next_hdr = self.next_hdr(self.block_index + 1);
-            if next_hdr.is_zero_block() {
-                // gracefully terminated Archive
-                log::debug!("End of Tar archive with two zero blocks!");
-            } else {
-                log::warn!("Zero block found at end of Tar archive, but only one instead of two!");
+        loop {
+            // check if we found end of archive
+            if hdr.is_zero_block() {
+                let next_hdr = self.next_hdr(self.block_index + 1);
+                if next_hdr.is_zero_block() {
+                    // gracefully terminated Archive
+                    log::debug!("End of Tar archive with two zero blocks!");
+                } else {
+                    log::warn!(
+                        "Zero block found at end of Tar archive, but only one instead of two!"
+                    );
+                }
+                // end of archive
+                return None;
             }
-            // end of archive
-            return None;
+
+            // Ignore directory entries, i.e. yield only regular files. Works as
+            // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
+            if hdr.typeflag != TypeFlag::DIRTYPE {
+                break;
+            }
+
+            // in next iteration: start at next Archive entry header
+            // +1 for current hdr block itself + all data blocks
+            let data_block_count: usize = hdr.payload_block_count().unwrap();
+            self.block_index += data_block_count + 1;
+            hdr = self.next_hdr(self.block_index);
         }
 
         if hdr.typeflag != TypeFlag::AREGTYPE && hdr.typeflag != TypeFlag::REGTYPE {
@@ -219,7 +236,7 @@ impl<'a> Iterator for ArchiveIterator<'a> {
             warn!("Found empty file name",);
         }
 
-        let hdr_size = hdr.size.val();
+        let hdr_size = hdr.size.as_number::<usize>();
         if let Err(e) = hdr_size {
             warn!("Can't parse the file size from the header block. Stop iterating Tar archive. {e:#?}");
             return None;
@@ -245,10 +262,13 @@ impl<'a> Iterator for ArchiveIterator<'a> {
         // +1 for current hdr block itself + all data blocks
         self.block_index += data_block_count + 1;
 
-        let filename = ArrayString::from_str(hdr.name.as_string().as_str());
-        // .unwrap is fine as the capacity is MUST be ok.
-        let filename = filename.unwrap();
-
+        let mut filename: TarFormatString<256> =
+            TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
+        if hdr.magic.as_str() == "ustar" && hdr.version.as_str() == "00" && !hdr.prefix.is_empty() {
+            filename.append(&hdr.prefix);
+            filename.append(&TarFormatString::<1>::new([b'/']));
+        }
+        filename.append(&hdr.name);
         Some(ArchiveEntry::new(filename, file_bytes))
     }
 }
@@ -264,7 +284,6 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         println!("{:#?}", entries);
     }
-
     /// Tests to read the entries from existing archives in various Tar flavors.
     #[test]
     fn test_archive_entries() {
@@ -299,6 +318,54 @@ mod tests {
         assert_archive_content(&entries);
     }
 
+    /// Tests to read the entries from an existing tarball with a directory in it
+    #[test]
+    fn test_archive_with_long_dir_entries() {
+        // tarball created with:
+        //     $ cd tests; gtar --format=ustar -cf gnu_tar_ustar_long.tar 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar_long.tar"));
+        let entries = archive.entries().collect::<Vec<_>>();
+
+        assert_eq!(entries.len(), 2);
+        // Maximum length of a directory and name when the directory itself is tar'd
+        assert_entry_content(&entries[0], "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ", 7);
+        // Maximum length of a directory and name when only the file is tar'd.
+        assert_entry_content(&entries[1], "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ", 7);
+    }
+
+    #[test]
+    fn test_archive_with_deep_dir_entries() {
+        // tarball created with:
+        //     $ cd tests; gtar --format=ustar -cf gnu_tar_ustar_deep.tar 0123456789
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar_deep.tar"));
+        let entries = archive.entries().collect::<Vec<_>>();
+
+        assert_eq!(entries.len(), 1);
+        assert_entry_content(&entries[0], "0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/empty", 0);
+    }
+
+    #[test]
+    fn test_archive_with_dir_entries() {
+        // tarball created with:
+        //     $ gtar -cf tests/gnu_tar_default_with_dir.tar --exclude '*.tar' --exclude '012345678*' tests
+        {
+            let archive =
+                TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"));
+            let entries = archive.entries().collect::<Vec<_>>();
+
+            assert_archive_with_dir_content(&entries);
+        }
+
+        // tarball created with:
+        //     $(osx) tar -cf tests/mac_tar_ustar_with_dir.tar --format=ustar --exclude '*.tar' --exclude '012345678*' tests
+        {
+            let archive = TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar"));
+            let entries = archive.entries().collect::<Vec<_>>();
+
+            assert_archive_with_dir_content(&entries);
+        }
+    }
+
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
     #[cfg(feature = "alloc")]
     #[test]
@@ -314,15 +381,20 @@ mod tests {
         assert_eq!(data, archive.into());
     }
 
+    /// Test that the entry's contents match the expected content.
+    fn assert_entry_content(entry: &ArchiveEntry, filename: &str, size: usize) {
+        assert_eq!(entry.filename().as_str(), filename);
+        assert_eq!(entry.size(), size);
+        assert_eq!(entry.data().len(), size);
+    }
+
     /// Tests that the parsed archive matches the expected order. The tarballs
     /// the tests directory were created once by me with files in the order
     /// specified in this test.
     fn assert_archive_content(entries: &[ArchiveEntry]) {
         assert_eq!(entries.len(), 3);
 
-        assert_eq!(entries[0].filename().as_str(), "bye_world_513b.txt");
-        assert_eq!(entries[0].size(), 513);
-        assert_eq!(entries[0].data().len(), 513);
+        assert_entry_content(&entries[0], "bye_world_513b.txt", 513);
         assert_eq!(
             entries[0].data_as_str().expect("Should be valid UTF-8"),
             // .replace: Ensure that the test also works on Windows
@@ -331,22 +403,48 @@ mod tests {
 
         // Test that an entry that needs two 512 byte data blocks is read
         // properly.
-        assert_eq!(entries[1].filename().as_str(), "hello_world_513b.txt");
-        assert_eq!(entries[1].size(), 513);
-        assert_eq!(entries[1].data().len(), 513);
+        assert_entry_content(&entries[1], "hello_world_513b.txt", 513);
         assert_eq!(
             entries[1].data_as_str().expect("Should be valid UTF-8"),
             // .replace: Ensure that the test also works on Windows
             include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
         );
 
-        assert_eq!(entries[2].filename().as_str(), "hello_world.txt");
-        assert_eq!(entries[2].size(), 12);
-        assert_eq!(entries[2].data().len(), 12);
+        assert_entry_content(&entries[2], "hello_world.txt", 12);
         assert_eq!(
             entries[2].data_as_str().expect("Should be valid UTF-8"),
             "Hello World\n",
             "file content must match"
+        );
+    }
+
+    /// Tests that the parsed archive matches the expected order and the filename includes
+    /// the directory name. The tarballs the tests directory were created once by me with files
+    /// in the order specified in this test.
+    fn assert_archive_with_dir_content(entries: &[ArchiveEntry]) {
+        assert_eq!(entries.len(), 3);
+
+        assert_entry_content(&entries[0], "tests/hello_world.txt", 12);
+        assert_eq!(
+            entries[0].data_as_str().expect("Should be valid UTF-8"),
+            "Hello World\n",
+            "file content must match"
+        );
+
+        // Test that an entry that needs two 512 byte data blocks is read
+        // properly.
+        assert_entry_content(&entries[1], "tests/bye_world_513b.txt", 513);
+        assert_eq!(
+            entries[1].data_as_str().expect("Should be valid UTF-8"),
+            // .replace: Ensure that the test also works on Windows
+            include_str!("../tests/bye_world_513b.txt").replace("\r\n", "\n")
+        );
+
+        assert_entry_content(&entries[2], "tests/hello_world_513b.txt", 513);
+        assert_eq!(
+            entries[2].data_as_str().expect("Should be valid UTF-8"),
+            // .replace: Ensure that the test also works on Windows
+            include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
         );
     }
 }

@@ -90,10 +90,16 @@ extern crate alloc;
 /// Each Archive Entry (either Header or Data Block) is a block of 512 bytes.
 const BLOCKSIZE: usize = 512;
 /// Maximum filename length of the base Tar format including the terminating NULL-byte.
-const FILENAME_MAX_LEN: usize = 100;
+const NAME_LEN: usize = 100;
+/// Maximum long filename length of the base Tar format including the prefix
+const POSIX_1003_MAX_FILENAME_LEN: usize = 256;
+/// Maximum length of the prefix in Posix tar format
+const PREFIX_LEN: usize = 155;
 
 mod archive;
 mod header;
+mod tar_format_types;
 
 pub use archive::*;
 pub use header::*;
+pub use tar_format_types::*;
