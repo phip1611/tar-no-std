@@ -56,9 +56,7 @@ impl Mode {
 
 impl Debug for Mode {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let mut debug = f.debug_tuple("Mode");
-        debug.field(&self.to_flags());
-        debug.finish()
+        Debug::fmt(&self.to_flags(), f)
     }
 }
 
