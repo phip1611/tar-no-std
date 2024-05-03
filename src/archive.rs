@@ -26,12 +26,12 @@ SOFTWARE.
 
 use crate::header::PosixHeader;
 use crate::tar_format_types::TarFormatString;
-use crate::{TypeFlag, BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
+use crate::{BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 use core::fmt::{Debug, Display, Formatter};
 use core::str::Utf8Error;
-use log::warn;
+use log::{error, warn};
 
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
@@ -124,9 +124,9 @@ impl TarArchive {
 
     /// Iterates over all entries of the Tar archive.
     /// Returns items of type [`ArchiveEntry`].
-    /// See also [`ArchiveIterator`].
-    pub fn entries(&self) -> ArchiveIterator {
-        ArchiveIterator::new(self.data.as_ref())
+    /// See also [`ArchiveEntryIterator`].
+    pub fn entries(&self) -> ArchiveEntryIterator {
+        ArchiveEntryIterator::new(self.data.as_ref())
     }
 }
 
@@ -164,116 +164,139 @@ impl<'a> TarArchiveRef<'a> {
 
     /// Iterates over all entries of the Tar archive.
     /// Returns items of type [`ArchiveEntry`].
-    /// See also [`ArchiveIterator`].
-    pub const fn entries(&self) -> ArchiveIterator {
-        ArchiveIterator::new(self.data)
+    /// See also [`ArchiveEntryIterator`].
+    pub fn entries(&self) -> ArchiveEntryIterator {
+        ArchiveEntryIterator::new(self.data)
     }
 }
 
-/// Iterator over the files of the archive. Each iteration starts
-/// at the next Tar header entry.
+/// Iterates over the headers of the Tar archive.
 #[derive(Debug)]
-pub struct ArchiveIterator<'a> {
+pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
     block_index: usize,
 }
 
-impl<'a> ArchiveIterator<'a> {
-    pub const fn new(archive: &'a [u8]) -> Self {
+impl<'a> ArchiveHeaderIterator<'a> {
+    pub fn new(archive: &'a [u8]) -> Self {
+        assert!(!archive.is_empty());
+        assert_eq!(archive.len() % BLOCKSIZE, 0);
         Self {
             archive_data: archive,
             block_index: 0,
         }
     }
 
-    /// Returns a reference to the next Header.
-    fn next_hdr(&self, block_index: usize) -> &'a PosixHeader {
-        let hdr_ptr = &self.archive_data[block_index * BLOCKSIZE];
-        unsafe { (hdr_ptr as *const u8).cast::<PosixHeader>().as_ref() }.unwrap()
+    /// Parse the memory at the given block as [`PosixHeader`].
+    fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
+        unsafe {
+            self.archive_data
+                .as_ptr()
+                .add(block_index * BLOCKSIZE)
+                .cast::<PosixHeader>()
+                .as_ref()
+                .unwrap()
+        }
     }
 }
 
-impl<'a> Iterator for ArchiveIterator<'a> {
+type BlockIndex = usize;
+
+impl<'a> Iterator for ArchiveHeaderIterator<'a> {
+    type Item = (BlockIndex, &'a PosixHeader);
+
+    /// Returns the next header. Internally, it updates the necessary data
+    /// structures to not read the same header multiple times.
+    ///
+    /// This returns `None` if either no further headers are found or if a
+    /// header can't be parsed.
+    fn next(&mut self) -> Option<Self::Item> {
+        // TODO better check for two end zero blocks here?
+        assert!(self.block_index < self.archive_data.len() / BLOCKSIZE);
+
+        let hdr = self.block_as_header(self.block_index);
+        let block_index = self.block_index;
+
+        // Start at next block on next iteration.
+        self.block_index += 1;
+        log::info!("{:#?}, {:#?}", hdr.name, hdr.typeflag);
+
+        let block_count = hdr
+            .payload_block_count()
+            .inspect_err(|e| {
+                log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
+            })
+            .ok()?;
+
+        if !hdr.is_zero_block() {
+            self.block_index += block_count;
+        }
+
+        Some((block_index, hdr))
+    }
+}
+
+impl<'a> ExactSizeIterator for ArchiveEntryIterator<'a> {}
+
+/// Iterator over the files of the archive.
+#[derive(Debug)]
+pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
+
+impl<'a> ArchiveEntryIterator<'a> {
+    pub fn new(archive: &'a [u8]) -> Self {
+        Self(ArchiveHeaderIterator::new(archive))
+    }
+
+    fn next_hdr(&mut self) -> Option<(BlockIndex, &'a PosixHeader)> {
+        self.0.next()
+    }
+}
+
+impl<'a> Iterator for ArchiveEntryIterator<'a> {
     type Item = ArchiveEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.block_index * BLOCKSIZE >= self.archive_data.len() {
-            warn!("Reached end of Tar archive data without finding zero/end blocks!");
-            return None;
-        }
+        let (mut block_index, mut hdr) = self.next_hdr()?;
 
-        let mut hdr = self.next_hdr(self.block_index);
-
-        loop {
-            // check if we found end of archive
-            if hdr.is_zero_block() {
-                let next_hdr = self.next_hdr(self.block_index + 1);
-                if next_hdr.is_zero_block() {
-                    // gracefully terminated Archive
-                    log::debug!("End of Tar archive with two zero blocks!");
-                } else {
-                    log::warn!(
-                        "Zero block found at end of Tar archive, but only one instead of two!"
-                    );
-                }
-                // end of archive
-                return None;
-            }
-
-            // Ignore directory entries, i.e. yield only regular files. Works as
-            // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
-            if hdr.typeflag != TypeFlag::DIRTYPE {
-                break;
-            }
-
-            // in next iteration: start at next Archive entry header
-            // +1 for current hdr block itself + all data blocks
-            let data_block_count: usize = hdr.payload_block_count().unwrap();
-            self.block_index += data_block_count + 1;
-            hdr = self.next_hdr(self.block_index);
-        }
-
-        if hdr.typeflag != TypeFlag::AREGTYPE && hdr.typeflag != TypeFlag::REGTYPE {
-            log::warn!(
-                "Found entry of type={:?}, but only files are supported",
+        // Ignore directory entries, i.e. yield only regular files. Works as
+        // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
+        while !hdr.typeflag.is_regular_file() {
+            warn!(
+                "Skipping entry of type {:?} (not supported yet)",
                 hdr.typeflag
             );
-            return None;
+
+            // Update properties.
+            (block_index, hdr) = self.next_hdr()?;
         }
 
-        if hdr.name.is_empty() {
-            warn!("Found empty file name",);
+        // check if we found end of archive (two zero blocks)
+        if hdr.is_zero_block() {
+            if self.next_hdr()?.1.is_zero_block() {
+                // found end
+                return None;
+            } else {
+                panic!("Never expected to have a situation where self.next_hdr() returns a zero block and the next one is not a zero block, as we should never point to an 'end zero block of a regular file'");
+            }
         }
 
-        let hdr_size = hdr.size.as_number::<usize>();
-        if let Err(e) = hdr_size {
-            warn!("Can't parse the file size from the header block. Stop iterating Tar archive. {e:#?}");
-            return None;
-        }
-        let hdr_size = hdr_size.unwrap();
+        let payload_size: usize = hdr
+            .size
+            .as_number()
+            .inspect_err(|e| error!("Can't parse the file size from the header. {e:#?}"))
+            .ok()?;
 
-        // Fetch data of file from next block(s).
-        // .unwrap() is fine as we checked that hdr.size().val() is valid
-        // above
-        let data_block_count = hdr.payload_block_count().unwrap();
-
-        // +1: skip hdr block itself and start at data!
-        // i_begin is the byte begin index of this file in the array of the whole archive
-        let i_begin = (self.block_index + 1) * BLOCKSIZE;
-        // i_end is the exclusive byte end index of the data of the current file
-        let i_end = i_begin + data_block_count * BLOCKSIZE;
-        let file_block_bytes = &self.archive_data[i_begin..i_end];
-        // Each block is 512 bytes long, but the file size is not necessarily a
-        // multiple of 512.
-        let file_bytes = &file_block_bytes[0..hdr_size];
-
-        // in next iteration: start at next Archive entry header
-        // +1 for current hdr block itself + all data blocks
-        self.block_index += data_block_count + 1;
+        let idx_first_data_block = block_index + 1;
+        let idx_begin = idx_first_data_block * BLOCKSIZE;
+        let idx_end_exclusive = idx_begin + payload_size;
+        let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
         let mut filename: TarFormatString<256> =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
-        if hdr.magic.as_str() == "ustar" && hdr.version.as_str() == "00" && !hdr.prefix.is_empty() {
+        if hdr.magic.as_str().unwrap() == "ustar"
+            && hdr.version.as_str().unwrap() == "00"
+            && !hdr.prefix.is_empty()
+        {
             filename.append(&hdr.prefix);
             filename.append(&TarFormatString::<1>::new([b'/']));
         }
@@ -300,6 +323,30 @@ mod tests {
             assert_eq!(TarArchive::new(vec![0].into_boxed_slice()), Err(CorruptDataError));
             assert!(TarArchive::new(vec![0; BLOCKSIZE].into_boxed_slice()).is_ok());
         };
+    }
+
+    #[test]
+    fn test_header_iterator() {
+        let archive = include_bytes!("../tests/gnu_tar_default.tar");
+        let iter = ArchiveHeaderIterator::new(archive);
+        let names = iter
+            .map(|(_i, hdr)| hdr.name.as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names.as_slice(),
+            &[
+                "bye_world_513b.txt",
+                "hello_world_513b.txt",
+                "hello_world.txt",
+            ]
+        )
+
+        /*for hdr in iter {
+            dbg!(hdr);
+        }*/
+
+        // TODO make PartialEq
+        //assert_eq!(ArchiveHeaderIterator::new(archive).collect::<Vec<_>>().as_slice(), &[]);
     }
 
     #[test]
@@ -411,7 +458,7 @@ mod tests {
 
     /// Test that the entry's contents match the expected content.
     fn assert_entry_content(entry: &ArchiveEntry, filename: &str, size: usize) {
-        assert_eq!(entry.filename().as_str(), filename);
+        assert_eq!(entry.filename().as_str(), Ok(filename));
         assert_eq!(entry.size(), size);
         assert_eq!(entry.data().len(), size);
     }

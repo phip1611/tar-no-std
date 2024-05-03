@@ -36,6 +36,29 @@ jobs:
       - name: Run tests
         run: cargo test --verbose --features alloc
 
+  miri:
+    runs-on: "${{ matrix.runs-on }}"
+    needs:
+      # Logical dependency and wait for cache to be present
+      - build
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-latest
+        rust:
+          - nightly
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "${{ matrix.rust }}"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: "${{ matrix.runs-on }}-${{ matrix.rust }}"
+      - run: rustup component add miri
+      - run: cargo miri test --tests
+
   style_checks:
     runs-on: ubuntu-latest
     strategy:
