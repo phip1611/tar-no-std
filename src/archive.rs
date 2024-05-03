@@ -351,6 +351,7 @@ mod tests {
         let names = iter
             .map(|(_i, hdr)| hdr.name.as_str().unwrap())
             .collect::<Vec<_>>();
+
         assert_eq!(
             names.as_slice(),
             &[
@@ -359,13 +360,6 @@ mod tests {
                 "hello_world.txt",
             ]
         )
-
-        /*for hdr in iter {
-            dbg!(hdr);
-        }*/
-
-        // TODO make PartialEq
-        //assert_eq!(ArchiveHeaderIterator::new(archive).collect::<Vec<_>>().as_slice(), &[]);
     }
 
     #[test]
