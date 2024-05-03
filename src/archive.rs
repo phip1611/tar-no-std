@@ -174,7 +174,7 @@ impl<'a> TarArchiveRef<'a> {
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
-    block_index: usize,
+    next_hdr_block_index: usize,
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
@@ -183,7 +183,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
         assert_eq!(archive.len() % BLOCKSIZE, 0);
         Self {
             archive_data: archive,
-            block_index: 0,
+            next_hdr_block_index: 0,
         }
     }
 
@@ -213,23 +213,26 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         // TODO better check for two end zero blocks here?
         let total_block_count = self.archive_data.len() / BLOCKSIZE;
-        assert!(self.block_index < total_block_count);
+        assert!(self.next_hdr_block_index < total_block_count);
 
-        let hdr = self.block_as_header(self.block_index);
-        let block_index = self.block_index;
+        let hdr = self.block_as_header(self.next_hdr_block_index);
+        let block_index = self.next_hdr_block_index;
 
         // Start at next block on next iteration.
-        self.block_index += 1;
+        self.next_hdr_block_index += 1;
 
-        let block_count = hdr
-            .payload_block_count()
-            .inspect_err(|e| {
-                log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
-            })
-            .ok()?;
+        // We only update the block index for types that have a payload.
+        // In directory entries, for example, the size field has other
+        // semantics. See spec.
+        if hdr.typeflag.is_regular_file() {
+            let payload_block_count = hdr
+                .payload_block_count()
+                .inspect_err(|e| {
+                    log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
+                })
+                .ok()?;
 
-        if !hdr.is_zero_block() {
-            self.block_index += block_count;
+            self.next_hdr_block_index += payload_block_count;
         }
 
         Some((block_index, hdr))
