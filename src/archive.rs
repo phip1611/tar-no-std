@@ -189,8 +189,14 @@ impl<'a> ArchiveHeaderIterator<'a> {
 
     /// Parse the memory at the given block as [`PosixHeader`].
     fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
-        let hdr_ptr = &self.archive_data[block_index * BLOCKSIZE];
-        unsafe { (hdr_ptr as *const u8).cast::<PosixHeader>().as_ref() }.unwrap()
+        unsafe {
+            self.archive_data
+                .as_ptr()
+                .add(block_index * BLOCKSIZE)
+                .cast::<PosixHeader>()
+                .as_ref()
+                .unwrap()
+        }
     }
 }
 
