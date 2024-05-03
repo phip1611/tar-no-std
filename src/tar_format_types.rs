@@ -77,7 +77,7 @@ impl<const N: usize> Debug for TarFormatString<N> {
         let sub_array = &self.bytes[0..self.len()];
         write!(
             f,
-            "{},{} of {},{}",
+            "str='{}',byte_usage={}/{},is_nul_terminated={}",
             from_utf8(sub_array).unwrap(),
             self.len(),
             N,
