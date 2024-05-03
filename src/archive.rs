@@ -305,12 +305,19 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         let mut filename: TarFormatString<256> =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
-        if hdr.magic.as_str().unwrap() == "ustar"
-            && hdr.version.as_str().unwrap() == "00"
-            && !hdr.prefix.is_empty()
-        {
-            filename.append(&hdr.prefix);
-            filename.append(&TarFormatString::<1>::new([b'/']));
+
+        // POXIS_1003 long filename check
+        // https://docs.scinet.utoronto.ca/index.php/(POSIX_1003.1_USTAR)
+        match (
+            hdr.magic.as_str(),
+            hdr.version.as_str(),
+            hdr.prefix.is_empty(),
+        ) {
+            (Ok("ustar"), Ok("00"), false) => {
+                filename.append(&hdr.prefix);
+                filename.append(&TarFormatString::<1>::new([b'/']));
+            }
+            _ => (),
         }
         filename.append(&hdr.name);
         Some(ArchiveEntry::new(filename, file_bytes))
