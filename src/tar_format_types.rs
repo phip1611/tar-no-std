@@ -194,6 +194,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)]
     fn test_append() {
         let mut s = TarFormatString::new([0; 20]);
 

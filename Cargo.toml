@@ -3,8 +3,8 @@ name = "tar-no-std"
 description = """
 Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero allocations.
 The crate is simple and only supports reading of "basic" archives, therefore no extensions, such
-as GNU Longname. The maximum supported file name length is 256 characters excluding the NULL-byte 
-(using the tar name/prefix longname implementation).The maximum supported file size is 8GiB. 
+as GNU Longname. The maximum supported file name length is 256 characters excluding the NULL-byte
+(using the tar name/prefix longname implementation).The maximum supported file size is 8GiB.
 Directories are supported, but only regular fields are yielded in iteration.
 """
 version = "0.2.0"
@@ -29,10 +29,10 @@ name = "alloc_feature"
 required-features = ["alloc"]
 
 [dependencies]
-bitflags = "2.0"
+bitflags = "2.5"
 log = { version = "0.4", default-features = false }
-memchr = { version = "2.6.3", default-features = false }
-num-traits =  { version = "0.2.16", default-features = false }
+memchr = { version = "2.7", default-features = false }
+num-traits =  { version = "~0.2", default-features = false }
 
 [dev-dependencies]
-env_logger = "0.10"
+env_logger = "0.11"
