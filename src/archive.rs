@@ -468,27 +468,25 @@ mod tests {
     }
 
     #[test]
-    fn test_archive_with_dir_entries() {
+    fn test_default_archive_with_dir_entries() {
         // tarball created with:
         //     $ gtar -cf tests/gnu_tar_default_with_dir.tar --exclude '*.tar' --exclude '012345678*' tests
-        {
-            let archive =
-                TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"))
-                    .unwrap();
-            let entries = archive.entries().collect::<Vec<_>>();
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar")).unwrap();
+        let entries = archive.entries().collect::<Vec<_>>();
 
-            assert_archive_with_dir_content(&entries);
-        }
+        assert_archive_with_dir_content(&entries);
+    }
 
+    #[test]
+    fn test_ustar_archive_with_dir_entries() {
         // tarball created with:
         //     $(osx) tar -cf tests/mac_tar_ustar_with_dir.tar --format=ustar --exclude '*.tar' --exclude '012345678*' tests
-        {
-            let archive =
-                TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar")).unwrap();
-            let entries = archive.entries().collect::<Vec<_>>();
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar")).unwrap();
+        let entries = archive.entries().collect::<Vec<_>>();
 
-            assert_archive_with_dir_content(&entries);
-        }
+        assert_archive_with_dir_content(&entries);
     }
 
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
