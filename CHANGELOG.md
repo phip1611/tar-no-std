@@ -1,3 +1,7 @@
+# v0.3.1 (2024-05-03)
+
+- More sanity checks with malformed Tar archives.
+
 # v0.3.0 (2024-05-03)
 
 - MSRV is now 1.76 stable
