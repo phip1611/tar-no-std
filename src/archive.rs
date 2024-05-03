@@ -33,6 +33,11 @@ use core::fmt::{Debug, Display, Formatter};
 use core::str::Utf8Error;
 use log::{error, warn};
 
+/// Minimum amount of blocks that an archive must have to be considered sane.
+/// - one header block
+/// - two terminating zero blocks
+pub const MIN_BLOCK_COUNT: usize = 3;
+
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
 pub struct ArchiveEntry<'a> {
@@ -88,6 +93,7 @@ impl<'a> Debug for ArchiveEntry<'a> {
 /// that are:
 /// - the data is empty
 /// - the data is not a multiple of 512 (the BLOCKSIZE)
+/// - the data is not at least [`MIN_BLOCK_COUNT`] blocks long
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CorruptDataError;
 
@@ -112,13 +118,12 @@ pub struct TarArchive {
 
 #[cfg(feature = "alloc")]
 impl TarArchive {
-    /// Creates a new archive type, that owns the data on the heap. The provided byte array is
+    /// Creates a new archive wrapper type. The provided byte array is
     /// interpreted as bytes in Tar archive format.
+    ///
+    /// Returns an error, if the sanity checks report problems.
     pub fn new(data: Box<[u8]>) -> Result<Self, CorruptDataError> {
-        let is_malformed = (data.len() % BLOCKSIZE) != 0;
-        (!data.is_empty() && !is_malformed)
-            .then_some(Self { data })
-            .ok_or(CorruptDataError)
+        TarArchiveRef::validate(&data).map(|_| Self { data })
     }
 
     /// Iterates over all entries of the Tar archive.
@@ -154,10 +159,17 @@ pub struct TarArchiveRef<'a> {
 impl<'a> TarArchiveRef<'a> {
     /// Creates a new archive wrapper type. The provided byte array is
     /// interpreted as bytes in Tar archive format.
+    ///
+    /// Returns an error, if the sanity checks report problems.
     pub fn new(data: &'a [u8]) -> Result<Self, CorruptDataError> {
+        Self::validate(data).map(|_| Self { data })
+    }
+
+    fn validate(data: &'a [u8]) -> Result<(), CorruptDataError> {
         let is_malformed = (data.len() % BLOCKSIZE) != 0;
-        (!data.is_empty() && !is_malformed)
-            .then_some(Self { data })
+        let has_min_block_count = data.len() / BLOCKSIZE >= MIN_BLOCK_COUNT;
+        (!data.is_empty() && !is_malformed && has_min_block_count)
+            .then_some(())
             .ok_or(CorruptDataError)
     }
 
@@ -303,8 +315,10 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         let idx_begin = idx_first_data_block * BLOCKSIZE;
         let idx_end_exclusive = idx_begin + payload_size;
 
+        // This doesn't subtract with overflow as we ensured a minimum size in
+        // the constructor.
         let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
-        if idx_end_exclusive > max_data_end_index_exclusive {
+        if idx_end_exclusive >= max_data_end_index_exclusive {
             warn!("Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid");
             return None;
         }
@@ -340,13 +354,13 @@ mod tests {
     fn test_constructor_returns_error() {
         assert_eq!(TarArchiveRef::new(&[0]), Err(CorruptDataError));
         assert_eq!(TarArchiveRef::new(&[]), Err(CorruptDataError));
-        assert!(TarArchiveRef::new(&[0; BLOCKSIZE]).is_ok());
+        assert!(TarArchiveRef::new(&[0; BLOCKSIZE * MIN_BLOCK_COUNT]).is_ok());
 
         #[cfg(feature = "alloc")]
         {
             assert_eq!(TarArchive::new(vec![].into_boxed_slice()), Err(CorruptDataError));
             assert_eq!(TarArchive::new(vec![0].into_boxed_slice()), Err(CorruptDataError));
-            assert!(TarArchive::new(vec![0; BLOCKSIZE].into_boxed_slice()).is_ok());
+            assert!(TarArchive::new(vec![0; BLOCKSIZE * MIN_BLOCK_COUNT].into_boxed_slice()).is_ok());
         };
     }
 
