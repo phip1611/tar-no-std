@@ -223,15 +223,16 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
         // We only update the block index for types that have a payload.
         // In directory entries, for example, the size field has other
         // semantics. See spec.
-        if hdr.typeflag.is_regular_file() {
-            let payload_block_count = hdr
-                .payload_block_count()
-                .inspect_err(|e| {
-                    log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
-                })
-                .ok()?;
-
-            self.next_hdr_block_index += payload_block_count;
+        if let Ok(typeflag) = hdr.typeflag.try_to_type_flag() {
+            if typeflag.is_regular_file() {
+                let payload_block_count = hdr
+                    .payload_block_count()
+                    .inspect_err(|e| {
+                        log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
+                    })
+                    .ok()?;
+                self.next_hdr_block_index += payload_block_count;
+            }
         }
 
         Some((block_index, hdr))
@@ -266,7 +267,13 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         // Ignore directory entries, i.e. yield only regular files. Works as
         // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
-        while !hdr.typeflag.is_regular_file() {
+        while !hdr
+            .typeflag
+            .try_to_type_flag()
+            .inspect_err(|e| error!("Invalid TypeFlag: {e:?}"))
+            .ok()?
+            .is_regular_file()
+        {
             warn!(
                 "Skipping entry of type {:?} (not supported yet)",
                 hdr.typeflag
@@ -361,8 +368,19 @@ mod tests {
         )
     }
 
+    /// The test here is that no panics occur.
     #[test]
-    fn test_archive_list() {
+    fn test_print_archive_headers() {
+        let data = include_bytes!("../tests/gnu_tar_default.tar");
+
+        let iter = ArchiveHeaderIterator::new(data);
+        let entries = iter.map(|(_, hdr)| hdr).collect::<Vec<_>>();
+        println!("{:#?}", entries);
+    }
+
+    /// The test here is that no panics occur.
+    #[test]
+    fn test_print_archive_list() {
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         println!("{:#?}", entries);

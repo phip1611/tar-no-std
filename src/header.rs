@@ -31,7 +31,7 @@ SOFTWARE.
 #![allow(non_upper_case_globals)]
 
 use crate::{TarFormatDecimal, TarFormatOctal, TarFormatString, BLOCKSIZE, NAME_LEN, PREFIX_LEN};
-use core::fmt::{Debug, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
 
 /// Errors that may happen when parsing the [`ModeFlags`].
@@ -84,7 +84,7 @@ pub struct PosixHeader {
     pub size: TarFormatOctal<12>,
     pub mtime: TarFormatDecimal<12>,
     pub cksum: TarFormatOctal<8>,
-    pub typeflag: TypeFlag,
+    pub typeflag: TypeFlagRaw,
     /// Name. There is always a null byte, therefore
     /// the max len is 99.
     pub linkname: TarFormatString<NAME_LEN>,
@@ -118,6 +118,35 @@ impl PosixHeader {
         let ptr = self as *const Self as *const u8;
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
         self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq)]
+pub struct InvalidTypeFlagError(u8);
+
+impl Display for InvalidTypeFlagError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("{:x} is not a valid TypeFlag", self.0))
+    }
+}
+
+#[cfg(feature = "unstable")]
+impl core::error::Error for InvalidTypeFlagError {}
+
+#[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
+pub struct TypeFlagRaw(u8);
+
+impl TypeFlagRaw {
+    /// Tries to parse the underlying value as [`TypeFlag`]. This fails if the
+    /// Tar file is corrupt and the type is invalid.
+    pub fn try_to_type_flag(self) -> Result<TypeFlag, InvalidTypeFlagError> {
+        TypeFlag::try_from(self)
+    }
+}
+
+impl Debug for TypeFlagRaw {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(&self.try_to_type_flag(), f)
     }
 }
 
@@ -181,6 +210,27 @@ impl TypeFlag {
     pub fn is_regular_file(self) -> bool {
         // Equivalent. See spec.
         self == Self::AREGTYPE || self == Self::REGTYPE
+    }
+}
+
+impl TryFrom<TypeFlagRaw> for TypeFlag {
+    type Error = InvalidTypeFlagError;
+
+    fn try_from(value: TypeFlagRaw) -> Result<Self, Self::Error> {
+        match value.0 {
+            b'0' => Ok(Self::REGTYPE),
+            b'\0' => Ok(Self::AREGTYPE),
+            b'1' => Ok(Self::LINK),
+            b'2' => Ok(Self::SYMTYPE),
+            b'3' => Ok(Self::CHRTYPE),
+            b'4' => Ok(Self::BLKTYPE),
+            b'5' => Ok(Self::DIRTYPE),
+            b'6' => Ok(Self::FIFOTYPE),
+            b'7' => Ok(Self::CONTTYPE),
+            b'x' => Ok(Self::XHDTYPE),
+            b'g' => Ok(Self::XGLTYPE),
+            e => Err(InvalidTypeFlagError(e)),
+        }
     }
 }
 
@@ -284,24 +334,24 @@ mod tests {
     fn test_parse_tar_header_filename() {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_gnu.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_oldgnu.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
@@ -318,8 +368,8 @@ mod tests {
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_ustar.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
@@ -327,8 +377,8 @@ mod tests {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_v7.tar"));
         // ARegType: legacy
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::AREGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::AREGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
