@@ -375,6 +375,36 @@ mod tests {
         println!("{:#?}", entries);
     }
 
+    /// Tests various weird (= invalid, corrupt) tarballs that are bundled
+    /// within this file. The tarball(s) originate from a fuzzing process from a
+    /// GitHub contributor [0].
+    ///
+    /// The test succeeds if no panics occur.
+    ///
+    /// [0] https://github.com/phip1611/tar-no-std/issues/12#issuecomment-2092632090
+    #[test]
+    fn test_weird_fuzzing_tarballs() {
+        /*std::env::set_var("RUST_LOG", "trace");
+        std::env::set_var("RUST_LOG_STYLE", "always");
+        env_logger::init();*/
+
+        let main_tarball =
+            TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar")).unwrap();
+
+        let mut all_entries = vec![];
+        for tarball in main_tarball.entries() {
+            let tarball = TarArchiveRef::new(tarball.data()).unwrap();
+            for entry in tarball.entries() {
+                all_entries.push(entry.filename());
+            }
+        }
+
+        // Test succeeds if this works without a panic.
+        for entry in all_entries {
+            eprintln!("\"{entry:?}\",");
+        }
+    }
+
     /// Tests to read the entries from existing archives in various Tar flavors.
     #[test]
     fn test_archive_entries() {
