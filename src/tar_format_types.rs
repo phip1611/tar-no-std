@@ -3,9 +3,12 @@
 use core::fmt::{Debug, Formatter};
 use core::num::ParseIntError;
 use core::ptr::copy_nonoverlapping;
-use core::str::from_utf8;
+use core::str::{from_utf8, Utf8Error};
 use num_traits::Num;
 
+/// Base type for strings embedded in a Tar header. The length depends on the
+/// context. The returned string
+///
 /// An optionally null terminated string. The contents are either:
 /// 1. A fully populated string with no null termination or
 /// 2. A partially populated string where the unused bytes are zero.
@@ -34,36 +37,30 @@ impl<const N: usize> TarFormatString<N> {
         self.bytes[0] == 0
     }
 
-    // True if the string is NULL terminated
-    pub const fn is_nul_terminated(&self) -> bool {
-        self.bytes[N - 1] == 0
+    /// Returns the length of the bytes. This is either the full capacity `N`
+    /// or the data until the first NULL byte.
+    pub fn size(&self) -> usize {
+        memchr::memchr(0, &self.bytes).unwrap_or(N)
     }
 
-    /// Returns the length of the string (ignoring NULL bytes).
-    pub fn len(&self) -> usize {
-        if self.is_nul_terminated() {
-            memchr::memchr(0, &self.bytes).unwrap()
-        } else {
-            N
-        }
-    }
-
-    /// Returns a str ref without NULL bytes. Panics if the string is not valid UTF-8.
-    pub fn as_str(&self) -> &str {
-        from_utf8(&self.bytes[0..self.len()]).expect("byte array is not UTF-8")
+    /// Returns a str ref without terminating or intermediate NULL bytes. The
+    /// string is truncated at the first NULL byte, in case not the full length
+    /// was used.
+    pub fn as_str(&self) -> Result<&str, Utf8Error> {
+        from_utf8(&self.bytes[0..self.size()])
     }
 
     /// Append to end of string. Panics if there is not enough capacity.
     pub fn append<const S: usize>(&mut self, other: &TarFormatString<S>) {
-        let resulting_length = self.len() + other.len();
+        let resulting_length = self.size() + other.size();
         if resulting_length > N {
             panic!("Result to long for capacity {}", N);
         }
 
         unsafe {
-            let dst = self.bytes.as_mut_ptr().add(self.len());
+            let dst = self.bytes.as_mut_ptr().add(self.size());
             let src = other.bytes.as_ptr();
-            copy_nonoverlapping(src, dst, other.len());
+            copy_nonoverlapping(src, dst, other.size());
         }
 
         if resulting_length < N {
@@ -74,14 +71,13 @@ impl<const N: usize> TarFormatString<N> {
 
 impl<const N: usize> Debug for TarFormatString<N> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        let sub_array = &self.bytes[0..self.len()];
+        let sub_array = &self.bytes[0..self.size()];
         write!(
             f,
-            "str='{}',byte_usage={}/{},is_nul_terminated={}",
+            "str='{}',byte_usage={}/{}",
             from_utf8(sub_array).unwrap(),
-            self.len(),
-            N,
-            self.is_nul_terminated()
+            self.size(),
+            N
         )
     }
 }
@@ -107,7 +103,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
         T: num_traits::Num,
     {
         memchr::memchr2(32, 0, &self.0.bytes).map_or_else(
-            || T::from_str_radix(self.0.as_str(), R),
+            || T::from_str_radix(self.0.as_str().expect("Should be valid Tar archive"), R),
             |idx| {
                 T::from_str_radix(
                     from_utf8(&self.0.bytes[..idx]).expect("byte array is not UTF-8"),
@@ -120,7 +116,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
 
 impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        let sub_array = &self.0.bytes[0..self.0.len()];
+        let sub_array = &self.0.bytes[0..self.0.size()];
         match self.as_number::<u64>() {
             Err(msg) => write!(f, "{} [{}]", msg, from_utf8(sub_array).unwrap()),
             Ok(val) => write!(f, "{} [{}]", val, from_utf8(sub_array).unwrap()),
@@ -168,9 +164,8 @@ mod tests {
         let empty = TarFormatString::new([0]);
         assert_eq!(size_of_val(&empty), 1);
         assert!(empty.is_empty());
-        assert_eq!(empty.len(), 0);
-        assert!(empty.is_nul_terminated());
-        assert_eq!(empty.as_str(), "");
+        assert_eq!(empty.size(), 0);
+        assert_eq!(empty.as_str(), Ok(""));
     }
 
     #[test]
@@ -178,9 +173,8 @@ mod tests {
         let s = TarFormatString::new([65]);
         assert_eq!(size_of_val(&s), 1);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 1);
-        assert!(!s.is_nul_terminated());
-        assert_eq!(s.as_str(), "A");
+        assert_eq!(s.size(), 1);
+        assert_eq!(s.as_str(), Ok("A"));
     }
 
     #[test]
@@ -188,9 +182,8 @@ mod tests {
         let s = TarFormatString::new([65, 0]);
         assert_eq!(size_of_val(&s), 2);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 1);
-        assert!(s.is_nul_terminated());
-        assert_eq!(s.as_str(), "A");
+        assert_eq!(s.size(), 1);
+        assert_eq!(s.as_str(), Ok("A"));
     }
 
     #[test]
@@ -203,49 +196,43 @@ mod tests {
         // Then the result is no change
         assert_eq!(size_of_val(&s), 20);
         assert!(s.is_empty());
-        assert_eq!(s.len(), 0);
-        assert!(s.is_nul_terminated());
-        assert_eq!(s.as_str(), "");
+        assert_eq!(s.size(), 0);
+        assert_eq!(s.as_str(), Ok(""));
 
         // When adding ABC
         s.append(&TarFormatString::new([65, 66, 67]));
         // Then the string contains the additional 3 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 3);
-        assert!(s.is_nul_terminated());
-        assert_eq!(s.as_str(), "ABC");
+        assert_eq!(s.size(), 3);
+        assert_eq!(s.as_str(), Ok("ABC"));
 
         s.append(&TarFormatString::new([68, 69, 70]));
         // Then the string contains the additional 3 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 6);
-        assert!(s.is_nul_terminated());
-        assert_eq!(s.as_str(), "ABCDEF");
+        assert_eq!(s.size(), 6);
+        assert_eq!(s.as_str(), Ok("ABCDEF"));
 
         s.append(&TarFormatString::new([b'A'; 12]));
         // Then the string contains the additional 12 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 18);
-        assert!(s.is_nul_terminated());
-        assert_eq!(s.as_str(), "ABCDEFAAAAAAAAAAAA");
+        assert_eq!(s.size(), 18);
+        assert_eq!(s.as_str(), Ok("ABCDEFAAAAAAAAAAAA"));
 
         s.append(&TarFormatString::new([b'A'; 1]));
         // Then the string contains the additional 1 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 19);
-        assert!(s.is_nul_terminated());
-        assert_eq!(s.as_str(), "ABCDEFAAAAAAAAAAAAA");
+        assert_eq!(s.size(), 19);
+        assert_eq!(s.as_str(), Ok("ABCDEFAAAAAAAAAAAAA"));
 
         s.append(&TarFormatString::new([b'Z'; 1]));
         // Then the string contains the additional 1 char, is full and not null terminated
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
-        assert_eq!(s.len(), 20);
-        assert!(!s.is_nul_terminated());
-        assert_eq!(s.as_str(), "ABCDEFAAAAAAAAAAAAAZ");
+        assert_eq!(s.size(), 20);
+        assert_eq!(s.as_str(), Ok("ABCDEFAAAAAAAAAAAAAZ"));
     }
 }

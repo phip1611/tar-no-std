@@ -273,7 +273,7 @@ impl<'a> Iterator for ArchiveIterator<'a> {
 
         let mut filename: TarFormatString<256> =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
-        if hdr.magic.as_str() == "ustar" && hdr.version.as_str() == "00" && !hdr.prefix.is_empty() {
+        if hdr.magic.as_str().unwrap() == "ustar" && hdr.version.as_str().unwrap() == "00" && !hdr.prefix.is_empty() {
             filename.append(&hdr.prefix);
             filename.append(&TarFormatString::<1>::new([b'/']));
         }
@@ -411,7 +411,7 @@ mod tests {
 
     /// Test that the entry's contents match the expected content.
     fn assert_entry_content(entry: &ArchiveEntry, filename: &str, size: usize) {
-        assert_eq!(entry.filename().as_str(), filename);
+        assert_eq!(entry.filename().as_str(), Ok(filename));
         assert_eq!(entry.size(), size);
         assert_eq!(entry.data().len(), size);
     }

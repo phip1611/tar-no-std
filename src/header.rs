@@ -273,7 +273,7 @@ mod tests {
             TypeFlag::REGTYPE,
             "the first entry is a regular file!"
         );
-        assert_eq!(archive.name.as_str(), "bye_world_513b.txt");
+        assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_gnu.tar"));
         assert_eq!(
@@ -281,7 +281,7 @@ mod tests {
             TypeFlag::REGTYPE,
             "the first entry is a regular file!"
         );
-        assert_eq!(archive.name.as_str(), "bye_world_513b.txt");
+        assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_oldgnu.tar"));
         assert_eq!(
@@ -289,7 +289,7 @@ mod tests {
             TypeFlag::REGTYPE,
             "the first entry is a regular file!"
         );
-        assert_eq!(archive.name.as_str(), "bye_world_513b.txt");
+        assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         /* UNSUPPORTED YET. Uses extensions..
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_pax.tar"));
@@ -307,7 +307,7 @@ mod tests {
             TypeFlag::REGTYPE,
             "the first entry is a regular file!"
         );
-        assert_eq!(archive.name.as_str(), "bye_world_513b.txt");
+        assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_v7.tar"));
         // ARegType: legacy
@@ -316,7 +316,7 @@ mod tests {
             TypeFlag::AREGTYPE,
             "the first entry is a regular file!"
         );
-        assert_eq!(archive.name.as_str(), "bye_world_513b.txt");
+        assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
     }
 
     #[test]
