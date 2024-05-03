@@ -211,9 +211,11 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     /// This returns `None` if either no further headers are found or if a
     /// header can't be parsed.
     fn next(&mut self) -> Option<Self::Item> {
-        // TODO better check for two end zero blocks here?
         let total_block_count = self.archive_data.len() / BLOCKSIZE;
-        assert!(self.next_hdr_block_index < total_block_count);
+        if self.next_hdr_block_index >= total_block_count {
+            warn!("Invalid block index. Probably the Tar is corrupt: an header had an invalid payload size");
+            return None;
+        }
 
         let hdr = self.block_as_header(self.next_hdr_block_index);
         let block_index = self.next_hdr_block_index;
