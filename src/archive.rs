@@ -294,6 +294,13 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         let idx_first_data_block = block_index + 1;
         let idx_begin = idx_first_data_block * BLOCKSIZE;
         let idx_end_exclusive = idx_begin + payload_size;
+
+        let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
+        if idx_end_exclusive > max_data_end_index_exclusive {
+            warn!("Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid");
+            return None;
+        }
+
         let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
         let mut filename: TarFormatString<256> =
