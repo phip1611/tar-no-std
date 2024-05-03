@@ -212,14 +212,14 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     /// header can't be parsed.
     fn next(&mut self) -> Option<Self::Item> {
         // TODO better check for two end zero blocks here?
-        assert!(self.block_index < self.archive_data.len() / BLOCKSIZE);
+        let total_block_count = self.archive_data.len() / BLOCKSIZE;
+        assert!(self.block_index < total_block_count);
 
         let hdr = self.block_as_header(self.block_index);
         let block_index = self.block_index;
 
         // Start at next block on next iteration.
         self.block_index += 1;
-        log::info!("{:#?}, {:#?}", hdr.name, hdr.typeflag);
 
         let block_count = hdr
             .payload_block_count()
@@ -355,6 +355,7 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         println!("{:#?}", entries);
     }
+
     /// Tests to read the entries from existing archives in various Tar flavors.
     #[test]
     fn test_archive_entries() {
