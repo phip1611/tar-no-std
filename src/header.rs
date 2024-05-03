@@ -41,7 +41,7 @@ pub enum ModeError {
 }
 
 /// Wrapper around the UNIX file permissions given in octal ASCII.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Mode(TarFormatOctal<8>);
 
@@ -72,8 +72,7 @@ impl Debug for Mode {
 /// This is also mostly compatible with the "Ustar"-header and the "GNU format".
 /// Because this library only needs to fetch data and filename, we don't need
 /// further checks.
-// TODO make PartialEq?
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct PosixHeader {
     pub name: TarFormatString<NAME_LEN>,

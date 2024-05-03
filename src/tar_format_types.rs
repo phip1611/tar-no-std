@@ -15,7 +15,7 @@ use num_traits::Num;
 ///
 /// The content is likely to be UTF-8/ASCII, but that is not verified by this
 /// type. The
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatString<const N: usize> {
     bytes: [u8; N],
@@ -83,17 +83,17 @@ impl<const N: usize> Debug for TarFormatString<N> {
 }
 
 /// A number with a specified base. Trailing spaces in the string are ignored.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatNumber<const N: usize, const R: u32>(TarFormatString<N>);
 
 /// An octal number. Trailing spaces in the string are ignored.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatOctal<const N: usize>(TarFormatNumber<N, 8>);
 
 /// A decimal number. Trailing spaces in the string are ignored.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatDecimal<const N: usize>(TarFormatNumber<N, 10>);
 
