@@ -32,7 +32,7 @@ fn main() {
     // also works in no_std environment (except the println!, of course)
     let archive = include_bytes!("../tests/gnu_tar_default.tar");
     let archive_heap_owned = archive.to_vec().into_boxed_slice();
-    let archive = TarArchive::new(archive_heap_owned);
+    let archive = TarArchive::new(archive_heap_owned).unwrap();
     // Vec needs an allocator of course, but the library itself doesn't need one
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);

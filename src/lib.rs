@@ -53,7 +53,7 @@ SOFTWARE.
 //!
 //! // also works in no_std environment (except the println!, of course)
 //! let archive = include_bytes!("../tests/gnu_tar_default.tar");
-//! let archive = TarArchiveRef::new(archive);
+//! let archive = TarArchiveRef::new(archive).unwrap();
 //! // Vec needs an allocator of course, but the library itself doesn't need one
 //! let entries = archive.entries().collect::<Vec<_>>();
 //! println!("{:#?}", entries);
@@ -62,6 +62,7 @@ SOFTWARE.
 //! println!("{:#?}", last_file_content);
 //! ```
 
+#![cfg_attr(feature = "unstable", feature(error_in_core))]
 #![cfg_attr(not(test), no_std)]
 #![deny(
     clippy::all,
