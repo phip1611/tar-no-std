@@ -60,65 +60,6 @@ impl Debug for Mode {
     }
 }
 
-/// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990.
-/// "New" (version?) GNU Tar versions use this archive format by default.
-/// (<https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>).
-///
-/// Each file is started by such a header, that describes the size and
-/// the file name. After that, the file content stands in chunks of 512 bytes.
-/// The number of bytes can be derived from the file size.
-///
-/// This is also mostly compatible with the "Ustar"-header and the "GNU format".
-/// Because this library only needs to fetch data and filename, we don't need
-/// further checks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(C, packed)]
-pub struct PosixHeader {
-    pub name: TarFormatString<NAME_LEN>,
-    pub mode: Mode,
-    pub uid: TarFormatOctal<8>,
-    pub gid: TarFormatOctal<8>,
-    // confusing; size is stored as ASCII string
-    pub size: TarFormatOctal<12>,
-    pub mtime: TarFormatDecimal<12>,
-    pub cksum: TarFormatOctal<8>,
-    pub typeflag: TypeFlagRaw,
-    /// Name. There is always a null byte, therefore
-    /// the max len is 99.
-    pub linkname: TarFormatString<NAME_LEN>,
-    pub magic: TarFormatString<6>,
-    pub version: TarFormatString<2>,
-    /// Username. There is always a null byte, therefore
-    /// the max len is N-1.
-    pub uname: TarFormatString<32>,
-    /// Groupname. There is always a null byte, therefore
-    /// the max len is N-1.
-    pub gname: TarFormatString<32>,
-    pub dev_major: TarFormatOctal<8>,
-    pub dev_minor: TarFormatOctal<8>,
-    pub prefix: TarFormatString<PREFIX_LEN>,
-    // padding => to BLOCKSIZE bytes
-    pub _pad: [u8; 12],
-}
-
-impl PosixHeader {
-    /// Returns the number of blocks that are required to read the whole file
-    /// content. Returns an error, if the file size can't be parsed from the
-    /// header.
-    pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
-        let parsed_size = self.size.as_number::<usize>()?;
-        Ok(parsed_size.div_ceil(BLOCKSIZE))
-    }
-
-    /// A Tar archive is terminated, if an end-of-archive entry, which consists
-    /// of two 512 blocks of zero bytes, is found.
-    pub fn is_zero_block(&self) -> bool {
-        let ptr = self as *const Self as *const u8;
-        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
-        self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq)]
 pub struct InvalidTypeFlagError(u8);
 
@@ -261,6 +202,65 @@ bitflags::bitflags! {
         const OthersWrite = 0o002;
         /// Others execute.
         const OthersExec = 0o001;
+    }
+}
+
+/// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990.
+/// "New" (version?) GNU Tar versions use this archive format by default.
+/// (<https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>).
+///
+/// Each file is started by such a header, that describes the size and
+/// the file name. After that, the file content stands in chunks of 512 bytes.
+/// The number of bytes can be derived from the file size.
+///
+/// This is also mostly compatible with the "Ustar"-header and the "GNU format".
+/// Because this library only needs to fetch data and filename, we don't need
+/// further checks.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct PosixHeader {
+    pub name: TarFormatString<NAME_LEN>,
+    pub mode: Mode,
+    pub uid: TarFormatOctal<8>,
+    pub gid: TarFormatOctal<8>,
+    // confusing; size is stored as ASCII string
+    pub size: TarFormatOctal<12>,
+    pub mtime: TarFormatDecimal<12>,
+    pub cksum: TarFormatOctal<8>,
+    pub typeflag: TypeFlagRaw,
+    /// Name. There is always a null byte, therefore
+    /// the max len is 99.
+    pub linkname: TarFormatString<NAME_LEN>,
+    pub magic: TarFormatString<6>,
+    pub version: TarFormatString<2>,
+    /// Username. There is always a null byte, therefore
+    /// the max len is N-1.
+    pub uname: TarFormatString<32>,
+    /// Groupname. There is always a null byte, therefore
+    /// the max len is N-1.
+    pub gname: TarFormatString<32>,
+    pub dev_major: TarFormatOctal<8>,
+    pub dev_minor: TarFormatOctal<8>,
+    pub prefix: TarFormatString<PREFIX_LEN>,
+    // padding => to BLOCKSIZE bytes
+    pub _pad: [u8; 12],
+}
+
+impl PosixHeader {
+    /// Returns the number of blocks that are required to read the whole file
+    /// content. Returns an error, if the file size can't be parsed from the
+    /// header.
+    pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
+        let parsed_size = self.size.as_number::<usize>()?;
+        Ok(parsed_size.div_ceil(BLOCKSIZE))
+    }
+
+    /// A Tar archive is terminated, if an end-of-archive entry, which consists
+    /// of two 512 blocks of zero bytes, is found.
+    pub fn is_zero_block(&self) -> bool {
+        let ptr = self as *const Self as *const u8;
+        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+        self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }
 }
 
