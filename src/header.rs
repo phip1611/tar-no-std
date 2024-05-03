@@ -177,6 +177,14 @@ pub enum TypeFlag {
     XGLTYPE = b'g',
 }
 
+impl TypeFlag {
+    /// Whether we have a regular file.
+    pub fn is_regular_file(self) -> bool {
+        // Equivalent. See spec.
+        self == Self::AREGTYPE || self == Self::REGTYPE
+    }
+}
+
 bitflags::bitflags! {
     /// UNIX file permissions in octal format.
     #[repr(transparent)]
