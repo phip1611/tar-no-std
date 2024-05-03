@@ -34,6 +34,7 @@ use crate::{TarFormatDecimal, TarFormatOctal, TarFormatString, BLOCKSIZE, NAME_L
 use core::fmt::{Debug, Formatter};
 use core::num::ParseIntError;
 
+/// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
 pub enum ModeError {
     ParseInt(ParseIntError),

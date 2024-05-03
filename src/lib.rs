@@ -21,42 +21,80 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero
-//! allocations. If you have a standard environment and need full feature
-//! support, I recommend the use of <https://crates.io/crates/tar> instead.
+//! # `tar-no-std` - Parse Tar Archives (Tarballs)
 //!
-//! The crate is simple and only supports reading of "basic" archives, therefore
-//! no extensions, such as GNU Longname. The maximum supported file name length
-//! is 100 characters including the NULL-byte. The maximum supported file size
-//! is 8 GiB. Also, directories are not supported yet but only flat collections
-//! of files.
+//! _Due to historical reasons, there are several formats of Tar archives. All of
+//! them are based on the same principles, but have some subtle differences that
+//! often make them incompatible with each other._ [(reference)](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
+//!
+//! Library to read Tar archives in `no_std` environments with zero allocations. If
+//! you have a standard environment and need full feature support, I recommend the
+//! use of <https://crates.io/crates/tar> instead.
+//!
+//! ## TL;DR
+//!
+//! Look at the [`TarArchiveRef`] type.
+//!
+//! ## Limitations
+//!
+//! This crate is simple and focuses on reading files and their content from a Tar
+//! archive. Historic basic Tar and ustar [formats](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
+//! are supported. Other formats may work, but likely without all supported
+//! features. GNU Extensions such as sparse files, incremental archives, and
+//! long filename extension are not supported.
+//!
+//! The maximum supported file name length is 256 characters excluding the
+//! NULL-byte (using the Tar name/prefix longname implementation of ustar). The
+//! maximum supported file size is 8GiB. Directories are supported, but only regular
+//! fields are yielded in iteration. The path is reflected in their file name.
+//!
+//! ## Use Case
 //!
 //! This library is useful, if you write a kernel or a similar low-level
-//! application, which needs "a bunch of files" from an archive ("init ram
-//! disk"). The Tar file could for example come as a Multiboot2 boot module
+//! application, which needs "a bunch of files" from an archive (like an
+//! "init ramdisk"). The Tar file could for example come as a Multiboot2 boot module
 //! provided by the bootloader.
 //!
-//! This crate focuses on extracting files from uncompressed Tar archives
-//! created with default options by **GNU Tar**. GNU Extensions such as sparse
-//! files, incremental archives, and long filename extension are not supported
-//! yet. [gnu.org](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
-//! provides a good overview over possible archive formats and their
-//! limitations.
+//! ## Example
 //!
-//! # Example
 //! ```rust
 //! use tar_no_std::TarArchiveRef;
 //!
-//! // also works in no_std environment (except the println!, of course)
-//! let archive = include_bytes!("../tests/gnu_tar_default.tar");
-//! let archive = TarArchiveRef::new(archive).unwrap();
-//! // Vec needs an allocator of course, but the library itself doesn't need one
-//! let entries = archive.entries().collect::<Vec<_>>();
-//! println!("{:#?}", entries);
-//! println!("content of last file:");
-//! let last_file_content = unsafe { core::str::from_utf8_unchecked(entries[2].data()) };
-//! println!("{:#?}", last_file_content);
+//! fn main() {
+//!     // log: not mandatory
+//!     std::env::set_var("RUST_LOG", "trace");
+//!     env_logger::init();
+//!
+//!     // also works in no_std environment (except the println!, of course)
+//!     let archive = include_bytes!("../tests/gnu_tar_default.tar");
+//!     let archive = TarArchiveRef::new(archive).unwrap();
+//!     // Vec needs an allocator of course, but the library itself doesn't need one
+//!     let entries = archive.entries().collect::<Vec<_>>();
+//!     println!("{:#?}", entries);
+//!     println!("content of first file:");
+//!     println!(
+//!         "{:#?}",
+//!         entries[0].data_as_str().expect("Should be valid UTF-8")
+//!     );
+//! }
 //! ```
+//!
+//! ## Cargo Feature
+//!
+//! This crate allows the usage of the additional Cargo build time feature `alloc`.
+//! When this is active, the crate also provides the type `TarArchive`, which owns
+//! the data on the heap. The `unstable` feature provides additional convenience
+//! only available on the nightly channel.
+//!
+//! ## Compression (`tar.gz`)
+//!
+//! If your Tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress
+//! the bytes first (e.g. by a *gzip* library). Afterwards, this crate can read the
+//! Tar archive format from the uncompressed bytes.
+//!
+//! ## MSRV
+//!
+//! The MSRV is 1.76.0 stable.
 
 #![cfg_attr(feature = "unstable", feature(error_in_core))]
 #![cfg_attr(not(test), no_std)]

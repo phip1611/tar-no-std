@@ -101,8 +101,7 @@ impl Display for CorruptDataError {
 impl core::error::Error for CorruptDataError {}
 
 /// Type that owns bytes on the heap, that represents a Tar archive.
-/// Unlike [`TarArchiveRef`], this type is useful, if you need to own the
-/// data as long as you need the archive, but no longer.
+/// Unlike [`TarArchiveRef`], this type takes ownership of the data.
 ///
 /// This is only available with the `alloc` feature of this crate.
 #[cfg(feature = "alloc")]
@@ -144,8 +143,8 @@ impl From<TarArchive> for Box<[u8]> {
     }
 }
 
-/// Wrapper type around bytes, which represents a Tar archive.
-/// Unlike [`TarArchive`], this uses only a reference to the data.
+/// Wrapper type around bytes, which represents a Tar archive. To iterate the
+/// entries, use [`TarArchiveRef::entries`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchiveRef<'a> {
     data: &'a [u8],
@@ -162,9 +161,7 @@ impl<'a> TarArchiveRef<'a> {
             .ok_or(CorruptDataError)
     }
 
-    /// Iterates over all entries of the Tar archive.
-    /// Returns items of type [`ArchiveEntry`].
-    /// See also [`ArchiveEntryIterator`].
+    /// Creates an [`ArchiveEntryIterator`].
     pub fn entries(&self) -> ArchiveEntryIterator {
         ArchiveEntryIterator::new(self.data)
     }
@@ -244,11 +241,15 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
 impl<'a> ExactSizeIterator for ArchiveEntryIterator<'a> {}
 
 /// Iterator over the files of the archive.
+///
+/// Only regular files are supported, but not directories, links, or other
+/// special types ([`crate::TypeFlag`]). The full path to files is reflected
+/// in their file name.
 #[derive(Debug)]
 pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
 
 impl<'a> ArchiveEntryIterator<'a> {
-    pub fn new(archive: &'a [u8]) -> Self {
+    fn new(archive: &'a [u8]) -> Self {
         Self(ArchiveHeaderIterator::new(archive))
     }
 
