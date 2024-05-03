@@ -103,10 +103,10 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
         T: num_traits::Num,
     {
         memchr::memchr2(b' ', b'\0', &self.0.bytes).map_or_else(
-            || T::from_str_radix(self.0.as_str().expect("Should be valid Tar archive"), R),
+            || T::from_str_radix(self.0.as_str().unwrap_or("0"), R),
             |idx| {
                 T::from_str_radix(
-                    from_utf8(&self.0.bytes[..idx]).expect("byte array is not UTF-8"),
+                    from_utf8(&self.0.bytes[..idx]).unwrap_or("0"),
                     8,
                 )
             },
