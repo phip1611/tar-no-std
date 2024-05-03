@@ -1,13 +1,13 @@
 name: Build
 
-on: [push, pull_request]
+on: [ push, pull_request, merge_group ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: "${{ matrix.runs-on }}"
     strategy:
       matrix:
         runs-on:
@@ -19,13 +19,13 @@ jobs:
           - 1.63.0 # MSVR
     steps:
       - uses: actions/checkout@v2
-      # Important preparation step: override the latest default Rust version in GitHub CI
-      # with the current value of the iteration in the "strategy.matrix.rust"-array.
-      - uses: actions-rs/toolchain@v1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: default
-          toolchain: ${{ matrix.rust }}
-          override: true
+          toolchain: "${{ matrix.rust }}"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: "${{ matrix.runs-on }}-${{ matrix.rust }}"
       - name: Build
         run: cargo build --all-targets --verbose --features alloc
       # use some arbitrary no_std target
@@ -44,13 +44,13 @@ jobs:
           - 1.63.0
     steps:
       - uses: actions/checkout@v2
-      # Important preparation step: override the latest default Rust version in GitHub CI
-      # with the current value of the iteration in the "strategy.matrix.rust"-array.
-      - uses: actions-rs/toolchain@v1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: default
-          toolchain: ${{ matrix.rust }}
-          override: true
+          toolchain: "${{ matrix.rust }}"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: "${{ matrix.runs-on }}-${{ matrix.rust }}"
       - name: Rustfmt
         run: cargo fmt -- --check
       - name: Clippy
