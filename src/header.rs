@@ -31,9 +31,10 @@ SOFTWARE.
 #![allow(non_upper_case_globals)]
 
 use crate::{TarFormatDecimal, TarFormatOctal, TarFormatString, BLOCKSIZE, NAME_LEN, PREFIX_LEN};
-use core::fmt::{Debug, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
 
+/// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
 pub enum ModeError {
     ParseInt(ParseIntError),
@@ -55,68 +56,36 @@ impl Mode {
 
 impl Debug for Mode {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let mut debug = f.debug_tuple("Mode");
-        debug.field(&self.to_flags());
-        debug.finish()
+        Debug::fmt(&self.to_flags(), f)
     }
 }
 
-/// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990.
-/// "New" (version?) GNU Tar versions use this archive format by default.
-/// (<https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>).
-///
-/// Each file is started by such a header, that describes the size and
-/// the file name. After that, the file content stands in chunks of 512 bytes.
-/// The number of bytes can be derived from the file size.
-///
-/// This is also mostly compatible with the "Ustar"-header and the "GNU format".
-/// Because this library only needs to fetch data and filename, we don't need
-/// further checks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(C, packed)]
-pub struct PosixHeader {
-    pub name: TarFormatString<NAME_LEN>,
-    pub mode: Mode,
-    pub uid: TarFormatOctal<8>,
-    pub gid: TarFormatOctal<8>,
-    // confusing; size is stored as ASCII string
-    pub size: TarFormatOctal<12>,
-    pub mtime: TarFormatDecimal<12>,
-    pub cksum: TarFormatOctal<8>,
-    pub typeflag: TypeFlag,
-    /// Name. There is always a null byte, therefore
-    /// the max len is 99.
-    pub linkname: TarFormatString<NAME_LEN>,
-    pub magic: TarFormatString<6>,
-    pub version: TarFormatString<2>,
-    /// Username. There is always a null byte, therefore
-    /// the max len is N-1.
-    pub uname: TarFormatString<32>,
-    /// Groupname. There is always a null byte, therefore
-    /// the max len is N-1.
-    pub gname: TarFormatString<32>,
-    pub dev_major: TarFormatOctal<8>,
-    pub dev_minor: TarFormatOctal<8>,
-    pub prefix: TarFormatString<PREFIX_LEN>,
-    // padding => to BLOCKSIZE bytes
-    pub _pad: [u8; 12],
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq)]
+pub struct InvalidTypeFlagError(u8);
+
+impl Display for InvalidTypeFlagError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("{:x} is not a valid TypeFlag", self.0))
+    }
 }
 
-impl PosixHeader {
-    /// Returns the number of blocks that are required to read the whole file
-    /// content. Returns an error, if the file size can't be parsed from the
-    /// header.
-    pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
-        let parsed_size = self.size.as_number::<usize>()?;
-        Ok(parsed_size.div_ceil(BLOCKSIZE))
-    }
+#[cfg(feature = "unstable")]
+impl core::error::Error for InvalidTypeFlagError {}
 
-    /// A Tar archive is terminated, if an end-of-archive entry, which consists
-    /// of two 512 blocks of zero bytes, is found.
-    pub fn is_zero_block(&self) -> bool {
-        let ptr = self as *const Self as *const u8;
-        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
-        self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
+#[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
+pub struct TypeFlagRaw(u8);
+
+impl TypeFlagRaw {
+    /// Tries to parse the underlying value as [`TypeFlag`]. This fails if the
+    /// Tar file is corrupt and the type is invalid.
+    pub fn try_to_type_flag(self) -> Result<TypeFlag, InvalidTypeFlagError> {
+        TypeFlag::try_from(self)
+    }
+}
+
+impl Debug for TypeFlagRaw {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(&self.try_to_type_flag(), f)
     }
 }
 
@@ -183,6 +152,27 @@ impl TypeFlag {
     }
 }
 
+impl TryFrom<TypeFlagRaw> for TypeFlag {
+    type Error = InvalidTypeFlagError;
+
+    fn try_from(value: TypeFlagRaw) -> Result<Self, Self::Error> {
+        match value.0 {
+            b'0' => Ok(Self::REGTYPE),
+            b'\0' => Ok(Self::AREGTYPE),
+            b'1' => Ok(Self::LINK),
+            b'2' => Ok(Self::SYMTYPE),
+            b'3' => Ok(Self::CHRTYPE),
+            b'4' => Ok(Self::BLKTYPE),
+            b'5' => Ok(Self::DIRTYPE),
+            b'6' => Ok(Self::FIFOTYPE),
+            b'7' => Ok(Self::CONTTYPE),
+            b'x' => Ok(Self::XHDTYPE),
+            b'g' => Ok(Self::XGLTYPE),
+            e => Err(InvalidTypeFlagError(e)),
+        }
+    }
+}
+
 bitflags::bitflags! {
     /// UNIX file permissions in octal format.
     #[repr(transparent)]
@@ -212,6 +202,65 @@ bitflags::bitflags! {
         const OthersWrite = 0o002;
         /// Others execute.
         const OthersExec = 0o001;
+    }
+}
+
+/// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990.
+/// "New" (version?) GNU Tar versions use this archive format by default.
+/// (<https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>).
+///
+/// Each file is started by such a header, that describes the size and
+/// the file name. After that, the file content stands in chunks of 512 bytes.
+/// The number of bytes can be derived from the file size.
+///
+/// This is also mostly compatible with the "Ustar"-header and the "GNU format".
+/// Because this library only needs to fetch data and filename, we don't need
+/// further checks.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(C, packed)]
+pub struct PosixHeader {
+    pub name: TarFormatString<NAME_LEN>,
+    pub mode: Mode,
+    pub uid: TarFormatOctal<8>,
+    pub gid: TarFormatOctal<8>,
+    // confusing; size is stored as ASCII string
+    pub size: TarFormatOctal<12>,
+    pub mtime: TarFormatDecimal<12>,
+    pub cksum: TarFormatOctal<8>,
+    pub typeflag: TypeFlagRaw,
+    /// Name. There is always a null byte, therefore
+    /// the max len is 99.
+    pub linkname: TarFormatString<NAME_LEN>,
+    pub magic: TarFormatString<6>,
+    pub version: TarFormatString<2>,
+    /// Username. There is always a null byte, therefore
+    /// the max len is N-1.
+    pub uname: TarFormatString<32>,
+    /// Groupname. There is always a null byte, therefore
+    /// the max len is N-1.
+    pub gname: TarFormatString<32>,
+    pub dev_major: TarFormatOctal<8>,
+    pub dev_minor: TarFormatOctal<8>,
+    pub prefix: TarFormatString<PREFIX_LEN>,
+    // padding => to BLOCKSIZE bytes
+    pub _pad: [u8; 12],
+}
+
+impl PosixHeader {
+    /// Returns the number of blocks that are required to read the whole file
+    /// content. Returns an error, if the file size can't be parsed from the
+    /// header.
+    pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
+        let parsed_size = self.size.as_number::<usize>()?;
+        Ok(parsed_size.div_ceil(BLOCKSIZE))
+    }
+
+    /// A Tar archive is terminated, if an end-of-archive entry, which consists
+    /// of two 512 blocks of zero bytes, is found.
+    pub fn is_zero_block(&self) -> bool {
+        let ptr = self as *const Self as *const u8;
+        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+        self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }
 }
 
@@ -283,24 +332,24 @@ mod tests {
     fn test_parse_tar_header_filename() {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_gnu.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_oldgnu.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
@@ -317,8 +366,8 @@ mod tests {
 
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_ustar.tar"));
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::REGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::REGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
@@ -326,8 +375,8 @@ mod tests {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_v7.tar"));
         // ARegType: legacy
         assert_eq!(
-            archive.typeflag,
-            TypeFlag::AREGTYPE,
+            archive.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::AREGTYPE),
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));

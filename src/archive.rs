@@ -101,8 +101,7 @@ impl Display for CorruptDataError {
 impl core::error::Error for CorruptDataError {}
 
 /// Type that owns bytes on the heap, that represents a Tar archive.
-/// Unlike [`TarArchiveRef`], this type is useful, if you need to own the
-/// data as long as you need the archive, but no longer.
+/// Unlike [`TarArchiveRef`], this type takes ownership of the data.
 ///
 /// This is only available with the `alloc` feature of this crate.
 #[cfg(feature = "alloc")]
@@ -144,8 +143,8 @@ impl From<TarArchive> for Box<[u8]> {
     }
 }
 
-/// Wrapper type around bytes, which represents a Tar archive.
-/// Unlike [`TarArchive`], this uses only a reference to the data.
+/// Wrapper type around bytes, which represents a Tar archive. To iterate the
+/// entries, use [`TarArchiveRef::entries`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchiveRef<'a> {
     data: &'a [u8],
@@ -162,9 +161,7 @@ impl<'a> TarArchiveRef<'a> {
             .ok_or(CorruptDataError)
     }
 
-    /// Iterates over all entries of the Tar archive.
-    /// Returns items of type [`ArchiveEntry`].
-    /// See also [`ArchiveEntryIterator`].
+    /// Creates an [`ArchiveEntryIterator`].
     pub fn entries(&self) -> ArchiveEntryIterator {
         ArchiveEntryIterator::new(self.data)
     }
@@ -174,7 +171,7 @@ impl<'a> TarArchiveRef<'a> {
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
-    block_index: usize,
+    next_hdr_block_index: usize,
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
@@ -183,7 +180,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
         assert_eq!(archive.len() % BLOCKSIZE, 0);
         Self {
             archive_data: archive,
-            block_index: 0,
+            next_hdr_block_index: 0,
         }
     }
 
@@ -211,25 +208,31 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     /// This returns `None` if either no further headers are found or if a
     /// header can't be parsed.
     fn next(&mut self) -> Option<Self::Item> {
-        // TODO better check for two end zero blocks here?
-        assert!(self.block_index < self.archive_data.len() / BLOCKSIZE);
+        let total_block_count = self.archive_data.len() / BLOCKSIZE;
+        if self.next_hdr_block_index >= total_block_count {
+            warn!("Invalid block index. Probably the Tar is corrupt: an header had an invalid payload size");
+            return None;
+        }
 
-        let hdr = self.block_as_header(self.block_index);
-        let block_index = self.block_index;
+        let hdr = self.block_as_header(self.next_hdr_block_index);
+        let block_index = self.next_hdr_block_index;
 
         // Start at next block on next iteration.
-        self.block_index += 1;
-        log::info!("{:#?}, {:#?}", hdr.name, hdr.typeflag);
+        self.next_hdr_block_index += 1;
 
-        let block_count = hdr
-            .payload_block_count()
-            .inspect_err(|e| {
-                log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
-            })
-            .ok()?;
-
-        if !hdr.is_zero_block() {
-            self.block_index += block_count;
+        // We only update the block index for types that have a payload.
+        // In directory entries, for example, the size field has other
+        // semantics. See spec.
+        if let Ok(typeflag) = hdr.typeflag.try_to_type_flag() {
+            if typeflag.is_regular_file() {
+                let payload_block_count = hdr
+                    .payload_block_count()
+                    .inspect_err(|e| {
+                        log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
+                    })
+                    .ok()?;
+                self.next_hdr_block_index += payload_block_count;
+            }
         }
 
         Some((block_index, hdr))
@@ -239,11 +242,15 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
 impl<'a> ExactSizeIterator for ArchiveEntryIterator<'a> {}
 
 /// Iterator over the files of the archive.
+///
+/// Only regular files are supported, but not directories, links, or other
+/// special types ([`crate::TypeFlag`]). The full path to files is reflected
+/// in their file name.
 #[derive(Debug)]
 pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
 
 impl<'a> ArchiveEntryIterator<'a> {
-    pub fn new(archive: &'a [u8]) -> Self {
+    fn new(archive: &'a [u8]) -> Self {
         Self(ArchiveHeaderIterator::new(archive))
     }
 
@@ -260,7 +267,13 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         // Ignore directory entries, i.e. yield only regular files. Works as
         // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
-        while !hdr.typeflag.is_regular_file() {
+        while !hdr
+            .typeflag
+            .try_to_type_flag()
+            .inspect_err(|e| error!("Invalid TypeFlag: {e:?}"))
+            .ok()?
+            .is_regular_file()
+        {
             warn!(
                 "Skipping entry of type {:?} (not supported yet)",
                 hdr.typeflag
@@ -289,13 +302,25 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         let idx_first_data_block = block_index + 1;
         let idx_begin = idx_first_data_block * BLOCKSIZE;
         let idx_end_exclusive = idx_begin + payload_size;
+
+        let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
+        if idx_end_exclusive > max_data_end_index_exclusive {
+            warn!("Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid");
+            return None;
+        }
+
         let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
         let mut filename: TarFormatString<256> =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
-        if hdr.magic.as_str().unwrap() == "ustar"
-            && hdr.version.as_str().unwrap() == "00"
-            && !hdr.prefix.is_empty()
+
+        // POXIS_1003 long filename check
+        // https://docs.scinet.utoronto.ca/index.php/(POSIX_1003.1_USTAR)
+        if (
+            hdr.magic.as_str(),
+            hdr.version.as_str(),
+            hdr.prefix.is_empty(),
+        ) == (Ok("ustar"), Ok("00"), false)
         {
             filename.append(&hdr.prefix);
             filename.append(&TarFormatString::<1>::new([b'/']));
@@ -332,6 +357,7 @@ mod tests {
         let names = iter
             .map(|(_i, hdr)| hdr.name.as_str().unwrap())
             .collect::<Vec<_>>();
+
         assert_eq!(
             names.as_slice(),
             &[
@@ -340,21 +366,56 @@ mod tests {
                 "hello_world.txt",
             ]
         )
-
-        /*for hdr in iter {
-            dbg!(hdr);
-        }*/
-
-        // TODO make PartialEq
-        //assert_eq!(ArchiveHeaderIterator::new(archive).collect::<Vec<_>>().as_slice(), &[]);
     }
 
+    /// The test here is that no panics occur.
     #[test]
-    fn test_archive_list() {
+    fn test_print_archive_headers() {
+        let data = include_bytes!("../tests/gnu_tar_default.tar");
+
+        let iter = ArchiveHeaderIterator::new(data);
+        let entries = iter.map(|(_, hdr)| hdr).collect::<Vec<_>>();
+        println!("{:#?}", entries);
+    }
+
+    /// The test here is that no panics occur.
+    #[test]
+    fn test_print_archive_list() {
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         println!("{:#?}", entries);
     }
+
+    /// Tests various weird (= invalid, corrupt) tarballs that are bundled
+    /// within this file. The tarball(s) originate from a fuzzing process from a
+    /// GitHub contributor [0].
+    ///
+    /// The test succeeds if no panics occur.
+    ///
+    /// [0] https://github.com/phip1611/tar-no-std/issues/12#issuecomment-2092632090
+    #[test]
+    fn test_weird_fuzzing_tarballs() {
+        /*std::env::set_var("RUST_LOG", "trace");
+        std::env::set_var("RUST_LOG_STYLE", "always");
+        env_logger::init();*/
+
+        let main_tarball =
+            TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar")).unwrap();
+
+        let mut all_entries = vec![];
+        for tarball in main_tarball.entries() {
+            let tarball = TarArchiveRef::new(tarball.data()).unwrap();
+            for entry in tarball.entries() {
+                all_entries.push(entry.filename());
+            }
+        }
+
+        // Test succeeds if this works without a panic.
+        for entry in all_entries {
+            eprintln!("\"{entry:?}\",");
+        }
+    }
+
     /// Tests to read the entries from existing archives in various Tar flavors.
     #[test]
     fn test_archive_entries() {
@@ -418,27 +479,25 @@ mod tests {
     }
 
     #[test]
-    fn test_archive_with_dir_entries() {
+    fn test_default_archive_with_dir_entries() {
         // tarball created with:
         //     $ gtar -cf tests/gnu_tar_default_with_dir.tar --exclude '*.tar' --exclude '012345678*' tests
-        {
-            let archive =
-                TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"))
-                    .unwrap();
-            let entries = archive.entries().collect::<Vec<_>>();
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar")).unwrap();
+        let entries = archive.entries().collect::<Vec<_>>();
 
-            assert_archive_with_dir_content(&entries);
-        }
+        assert_archive_with_dir_content(&entries);
+    }
 
+    #[test]
+    fn test_ustar_archive_with_dir_entries() {
         // tarball created with:
         //     $(osx) tar -cf tests/mac_tar_ustar_with_dir.tar --format=ustar --exclude '*.tar' --exclude '012345678*' tests
-        {
-            let archive =
-                TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar")).unwrap();
-            let entries = archive.entries().collect::<Vec<_>>();
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar")).unwrap();
+        let entries = archive.entries().collect::<Vec<_>>();
 
-            assert_archive_with_dir_content(&entries);
-        }
+        assert_archive_with_dir_content(&entries);
     }
 
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.

@@ -27,6 +27,7 @@ use tar_no_std::TarArchive;
 fn main() {
     // log: not mandatory
     std::env::set_var("RUST_LOG", "trace");
+    std::env::set_var("RUST_LOG_STYLE", "always");
     env_logger::init();
 
     // also works in no_std environment (except the println!, of course)
