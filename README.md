@@ -1,7 +1,7 @@
 # `tar-no-std` - Parse Tar Archives (Tarballs)
 
 _Due to historical reasons, there are several formats of tar archives. All of them are based on the same principles,
-but have some subtle differences that often make them incompatible with each other._ [[0]]
+but have some subtle differences that often make them incompatible with each other._ [0]
 
 Library to read Tar archives (by GNU Tar) in `no_std` contexts with zero allocations. If you have a standard
 environment and need full feature support, I recommend the use of <https://crates.io/crates/tar> instead.
@@ -52,7 +52,8 @@ If your tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress
 bytes.
 
 ## MSRV
-The MSRV is 1.52.1 stable.
+The MSRV is 1.76.0 stable.
 
 
-[0]: https://www.gnu.org/software/tar/manual/html_section/Formats.html
+## References
+[0]\: https://www.gnu.org/software/tar/manual/html_section/Formats.html

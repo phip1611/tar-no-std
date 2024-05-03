@@ -7,7 +7,7 @@ as GNU Longname. The maximum supported file name length is 256 characters exclud
 (using the tar name/prefix longname implementation).The maximum supported file size is 8GiB.
 Directories are supported, but only regular fields are yielded in iteration.
 """
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 keywords = ["tar", "tarball", "archive"]
 categories = ["data-structures", "no-std", "parser-implementations"]
@@ -16,6 +16,7 @@ license = "MIT"
 homepage = "https://github.com/phip1611/tar-no-std"
 repository = "https://github.com/phip1611/tar-no-std"
 documentation = "https://docs.rs/tar-no-std"
+rust-version = "1.76.0"
 
 # required because "env_logger" uses "log" but with dependency to std..
 resolver = "2"
