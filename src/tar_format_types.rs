@@ -102,7 +102,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     where
         T: num_traits::Num,
     {
-        memchr::memchr2(32, 0, &self.0.bytes).map_or_else(
+        memchr::memchr2(b' ', b'\0', &self.0.bytes).map_or_else(
             || T::from_str_radix(self.0.as_str().expect("Should be valid Tar archive"), R),
             |idx| {
                 T::from_str_radix(
