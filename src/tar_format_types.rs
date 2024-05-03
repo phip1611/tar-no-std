@@ -108,7 +108,7 @@ pub struct TarFormatDecimal<const N: usize>(TarFormatNumber<N, 10>);
 
 impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     #[cfg(test)]
-    fn new(bytes: [u8; N]) -> Self {
+    const fn new(bytes: [u8; N]) -> Self {
         Self(TarFormatString::<N> { bytes })
     }
 
@@ -121,7 +121,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     }
 
     /// Returns the underlying [`TarFormatString`].
-    pub fn as_inner(&self) -> &TarFormatString<N> {
+    pub const fn as_inner(&self) -> &TarFormatString<N> {
         &self.0
     }
 }
@@ -157,7 +157,7 @@ impl<const N: usize> TarFormatDecimal<N> {
     }
 
     /// Returns the underlying [`TarFormatString`].
-    pub fn as_inner(&self) -> &TarFormatString<N> {
+    pub const fn as_inner(&self) -> &TarFormatString<N> {
         self.0.as_inner()
     }
 }
@@ -171,7 +171,7 @@ impl<const N: usize> TarFormatOctal<N> {
     }
 
     /// Returns the underlying [`TarFormatString`].
-    pub fn as_inner(&self) -> &TarFormatString<N> {
+    pub const fn as_inner(&self) -> &TarFormatString<N> {
         self.0.as_inner()
     }
 }

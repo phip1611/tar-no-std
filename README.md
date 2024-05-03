@@ -34,7 +34,7 @@ provided by the bootloader.
 use tar_no_std::TarArchiveRef;
 
 fn main() {
-    // log: not mandatory
+    // init a logger (optional)
     std::env::set_var("RUST_LOG", "trace");
     env_logger::init();
 
@@ -44,11 +44,6 @@ fn main() {
     // Vec needs an allocator of course, but the library itself doesn't need one
     let entries = archive.entries().collect::<Vec<_>>();
     println!("{:#?}", entries);
-    println!("content of first file:");
-    println!(
-        "{:#?}",
-        entries[0].data_as_str().expect("Should be valid UTF-8")
-    );
 }
 ```
 

@@ -60,23 +60,16 @@ SOFTWARE.
 //! ```rust
 //! use tar_no_std::TarArchiveRef;
 //!
-//! fn main() {
-//!     // log: not mandatory
-//!     std::env::set_var("RUST_LOG", "trace");
-//!     env_logger::init();
+//! // init a logger (optional)
+//! std::env::set_var("RUST_LOG", "trace");
+//! env_logger::init();
 //!
-//!     // also works in no_std environment (except the println!, of course)
-//!     let archive = include_bytes!("../tests/gnu_tar_default.tar");
-//!     let archive = TarArchiveRef::new(archive).unwrap();
-//!     // Vec needs an allocator of course, but the library itself doesn't need one
-//!     let entries = archive.entries().collect::<Vec<_>>();
-//!     println!("{:#?}", entries);
-//!     println!("content of first file:");
-//!     println!(
-//!         "{:#?}",
-//!         entries[0].data_as_str().expect("Should be valid UTF-8")
-//!     );
-//! }
+//! // also works in no_std environment (except the println!, of course)
+//! let archive = include_bytes!("../tests/gnu_tar_default.tar");
+//! let archive = TarArchiveRef::new(archive).unwrap();
+//! // Vec needs an allocator of course, but the library itself doesn't need one
+//! let entries = archive.entries().collect::<Vec<_>>();
+//! println!("{:#?}", entries);
 //! ```
 //!
 //! ## Cargo Feature

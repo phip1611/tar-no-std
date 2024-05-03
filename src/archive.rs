@@ -309,16 +309,14 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         // POXIS_1003 long filename check
         // https://docs.scinet.utoronto.ca/index.php/(POSIX_1003.1_USTAR)
-        match (
+        if (
             hdr.magic.as_str(),
             hdr.version.as_str(),
             hdr.prefix.is_empty(),
-        ) {
-            (Ok("ustar"), Ok("00"), false) => {
-                filename.append(&hdr.prefix);
-                filename.append(&TarFormatString::<1>::new([b'/']));
-            }
-            _ => (),
+        ) == (Ok("ustar"), Ok("00"), false)
+        {
+            filename.append(&hdr.prefix);
+            filename.append(&TarFormatString::<1>::new([b'/']));
         }
         filename.append(&hdr.name);
         Some(ArchiveEntry::new(filename, file_bytes))
