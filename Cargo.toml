@@ -23,6 +23,7 @@ resolver = "2"
 [features]
 default = []
 alloc = []
+unstable = [] # requires nightly
 
 [[example]]
 name = "alloc_feature"

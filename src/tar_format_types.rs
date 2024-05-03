@@ -22,7 +22,7 @@ pub struct TarFormatString<const N: usize> {
 /// This string will be null terminated if it doesn't fill the entire array.
 impl<const N: usize> TarFormatString<N> {
     /// Constructor.
-    pub fn new(bytes: [u8; N]) -> Self {
+    pub const fn new(bytes: [u8; N]) -> Self {
         if N == 0 {
             panic!("Array cannot be zero length");
         }

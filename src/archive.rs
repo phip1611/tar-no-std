@@ -29,7 +29,7 @@ use crate::tar_format_types::TarFormatString;
 use crate::{TypeFlag, BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
-use core::fmt::{Debug, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 use core::str::Utf8Error;
 use log::warn;
 
@@ -84,13 +84,29 @@ impl<'a> Debug for ArchiveEntry<'a> {
     }
 }
 
+/// The data is corrupt and doesn't present a valid Tar archive. Reasons for
+/// that are:
+/// - the data is empty
+/// - the data is not a multiple of 512 (the BLOCKSIZE)
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct CorruptDataError;
+
+impl Display for CorruptDataError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+#[cfg(feature = "unstable")]
+impl core::error::Error for CorruptDataError {}
+
 /// Type that owns bytes on the heap, that represents a Tar archive.
 /// Unlike [`TarArchiveRef`], this type is useful, if you need to own the
-/// data as long as you need the archive, but not longer.
+/// data as long as you need the archive, but no longer.
 ///
 /// This is only available with the `alloc` feature of this crate.
 #[cfg(feature = "alloc")]
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchive {
     data: Box<[u8]>,
 }
@@ -99,15 +115,11 @@ pub struct TarArchive {
 impl TarArchive {
     /// Creates a new archive type, that owns the data on the heap. The provided byte array is
     /// interpreted as bytes in Tar archive format.
-    pub fn new(data: Box<[u8]>) -> Self {
-        assert_eq!(
-            data.len() % BLOCKSIZE,
-            0,
-            "data must be a multiple of BLOCKSIZE={}, len is {}",
-            BLOCKSIZE,
-            data.len(),
-        );
-        Self { data }
+    pub fn new(data: Box<[u8]>) -> Result<Self, CorruptDataError> {
+        let is_malformed = (data.len() % BLOCKSIZE) != 0;
+        (!data.is_empty() && !is_malformed)
+            .then_some(Self { data })
+            .ok_or(CorruptDataError)
     }
 
     /// Iterates over all entries of the Tar archive.
@@ -121,7 +133,7 @@ impl TarArchive {
 #[cfg(feature = "alloc")]
 impl From<Box<[u8]>> for TarArchive {
     fn from(data: Box<[u8]>) -> Self {
-        Self::new(data)
+        Self::new(data).unwrap()
     }
 }
 
@@ -134,23 +146,20 @@ impl From<TarArchive> for Box<[u8]> {
 
 /// Wrapper type around bytes, which represents a Tar archive.
 /// Unlike [`TarArchive`], this uses only a reference to the data.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchiveRef<'a> {
     data: &'a [u8],
 }
 
 #[allow(unused)]
 impl<'a> TarArchiveRef<'a> {
-    /// Creates a new archive wrapper type. The provided byte array is interpreted as
-    /// bytes in Tar archive format.
-    pub fn new(data: &'a [u8]) -> Self {
-        assert_eq!(
-            data.len() % BLOCKSIZE,
-            0,
-            "data must be a multiple of BLOCKSIZE={}",
-            BLOCKSIZE
-        );
-        Self { data }
+    /// Creates a new archive wrapper type. The provided byte array is
+    /// interpreted as bytes in Tar archive format.
+    pub fn new(data: &'a [u8]) -> Result<Self, CorruptDataError> {
+        let is_malformed = (data.len() % BLOCKSIZE) != 0;
+        (!data.is_empty() && !is_malformed)
+            .then_some(Self { data })
+            .ok_or(CorruptDataError)
     }
 
     /// Iterates over all entries of the Tar archive.
@@ -279,23 +288,38 @@ mod tests {
     use std::vec::Vec;
 
     #[test]
+    #[rustfmt::skip]
+    fn test_constructor_returns_error() {
+        assert_eq!(TarArchiveRef::new(&[0]), Err(CorruptDataError));
+        assert_eq!(TarArchiveRef::new(&[]), Err(CorruptDataError));
+        assert!(TarArchiveRef::new(&[0; BLOCKSIZE]).is_ok());
+
+        #[cfg(feature = "alloc")]
+        {
+            assert_eq!(TarArchive::new(vec![].into_boxed_slice()), Err(CorruptDataError));
+            assert_eq!(TarArchive::new(vec![0].into_boxed_slice()), Err(CorruptDataError));
+            assert!(TarArchive::new(vec![0; BLOCKSIZE].into_boxed_slice()).is_ok());
+        };
+    }
+
+    #[test]
     fn test_archive_list() {
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         println!("{:#?}", entries);
     }
     /// Tests to read the entries from existing archives in various Tar flavors.
     #[test]
     fn test_archive_entries() {
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_gnu.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_gnu.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_oldgnu.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_oldgnu.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
@@ -309,11 +333,11 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);*/
 
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_v7.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_v7.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
     }
@@ -323,7 +347,8 @@ mod tests {
     fn test_archive_with_long_dir_entries() {
         // tarball created with:
         //     $ cd tests; gtar --format=ustar -cf gnu_tar_ustar_long.tar 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar_long.tar"));
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar_long.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
 
         assert_eq!(entries.len(), 2);
@@ -337,7 +362,8 @@ mod tests {
     fn test_archive_with_deep_dir_entries() {
         // tarball created with:
         //     $ cd tests; gtar --format=ustar -cf gnu_tar_ustar_deep.tar 0123456789
-        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar_deep.tar"));
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar_deep.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
 
         assert_eq!(entries.len(), 1);
@@ -350,7 +376,8 @@ mod tests {
         //     $ gtar -cf tests/gnu_tar_default_with_dir.tar --exclude '*.tar' --exclude '012345678*' tests
         {
             let archive =
-                TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"));
+                TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default_with_dir.tar"))
+                    .unwrap();
             let entries = archive.entries().collect::<Vec<_>>();
 
             assert_archive_with_dir_content(&entries);
@@ -359,7 +386,8 @@ mod tests {
         // tarball created with:
         //     $(osx) tar -cf tests/mac_tar_ustar_with_dir.tar --format=ustar --exclude '*.tar' --exclude '012345678*' tests
         {
-            let archive = TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar"));
+            let archive =
+                TarArchiveRef::new(include_bytes!("../tests/mac_tar_ustar_with_dir.tar")).unwrap();
             let entries = archive.entries().collect::<Vec<_>>();
 
             assert_archive_with_dir_content(&entries);
@@ -373,7 +401,7 @@ mod tests {
         let data = include_bytes!("../tests/gnu_tar_default.tar")
             .to_vec()
             .into_boxed_slice();
-        let archive = TarArchive::new(data.clone());
+        let archive = TarArchive::new(data.clone()).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
