@@ -72,6 +72,7 @@ impl Debug for Mode {
 /// This is also mostly compatible with the "Ustar"-header and the "GNU format".
 /// Because this library only needs to fetch data and filename, we don't need
 /// further checks.
+// TODO make PartialEq?
 #[derive(Debug, Copy, Clone)]
 #[repr(C, packed)]
 pub struct PosixHeader {
@@ -107,14 +108,12 @@ impl PosixHeader {
     /// content. Returns an error, if the file size can't be parsed from the
     /// header.
     pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
-        let div = self.size.as_number::<usize>()? / BLOCKSIZE;
-        let modulo = self.size.as_number::<usize>()? % BLOCKSIZE;
-        let block_count = if modulo > 0 { div + 1 } else { div };
-        Ok(block_count)
+        let parsed_size = self.size.as_number::<usize>()?;
+        Ok(parsed_size.div_ceil(BLOCKSIZE))
     }
 
-    /// A Tar archive is terminated, if a end-of-archive entry, which consists of two 512 blocks
-    /// of zero bytes, is found.
+    /// A Tar archive is terminated, if an end-of-archive entry, which consists
+    /// of two 512 blocks of zero bytes, is found.
     pub fn is_zero_block(&self) -> bool {
         let ptr = self as *const Self as *const u8;
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
@@ -223,15 +222,23 @@ mod tests {
     use crate::BLOCKSIZE;
     use std::mem::size_of;
 
-    /// Casts the bytes to a reference to a PosixhHeader.
-    fn bytes_to_archive(bytes: &[u8]) -> &PosixHeader {
-        unsafe { (bytes.as_ptr() as *const PosixHeader).as_ref() }.unwrap()
+    /// Returns the PosixHeader at the beginning of the Tar archive.
+    fn bytes_to_archive(tar_archive_data: &[u8]) -> &PosixHeader {
+        unsafe { (tar_archive_data.as_ptr() as *const PosixHeader).as_ref() }.unwrap()
     }
 
     #[test]
     fn test_display_header() {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
+        assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
         println!("{:#?}'", archive);
+    }
+
+    #[test]
+    fn test_payload_block_count() {
+        // first file is "bye_world_513b.txt" => we expect two data blocks
+        let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
+        assert_eq!(archive.payload_block_count(), Ok(2));
     }
 
     #[test]

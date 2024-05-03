@@ -14,7 +14,7 @@ use num_traits::Num;
 /// 2. A partially populated string where the unused bytes are zero.
 ///
 /// The content is likely to be UTF-8/ASCII, but that is not verified by this
-/// type.
+/// type. The
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct TarFormatString<const N: usize> {
@@ -82,7 +82,7 @@ impl<const N: usize> Debug for TarFormatString<N> {
     }
 }
 
-/// A number. Trailing spaces in the string are ignored.
+/// A number with a specified base. Trailing spaces in the string are ignored.
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct TarFormatNumber<const N: usize, const R: u32>(TarFormatString<N>);
@@ -111,6 +111,11 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
                 )
             },
         )
+    }
+
+    /// Returns the raw string describing this type.
+    pub fn as_raw_str(&self) -> core::result::Result<&str, Utf8Error> {
+        self.0.as_str()
     }
 }
 
@@ -143,6 +148,10 @@ impl<const N: usize> TarFormatDecimal<N> {
     {
         self.0.as_number::<T>()
     }
+
+    pub fn as_raw_str(&self) -> core::result::Result<&str, Utf8Error> {
+        self.0.as_raw_str()
+    }
 }
 
 impl<const N: usize> TarFormatOctal<N> {
@@ -151,6 +160,10 @@ impl<const N: usize> TarFormatOctal<N> {
         T: num_traits::Num,
     {
         self.0.as_number::<T>()
+    }
+
+    pub fn as_raw_str(&self) -> core::result::Result<&str, Utf8Error> {
+        self.0.as_raw_str()
     }
 }
 
