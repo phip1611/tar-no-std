@@ -23,6 +23,7 @@ pub struct TarFormatString<const N: usize> {
 /// This string will be null terminated if it doesn't fill the entire array.
 impl<const N: usize> TarFormatString<N> {
     /// Constructor.
+    #[must_use]
     pub const fn new(bytes: [u8; N]) -> Self {
         if N == 0 {
             panic!("Array cannot be zero length");
@@ -31,12 +32,14 @@ impl<const N: usize> TarFormatString<N> {
     }
 
     /// True if the is string empty (ignoring NULL bytes).
+    #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.bytes[0] == 0
     }
 
     /// Returns the length of the payload in bytes. This is either the full
     /// capacity `N` or the data until the first NULL byte.
+    #[must_use]
     pub fn size(&self) -> usize {
         memchr::memchr(0, &self.bytes).unwrap_or(N)
     }
@@ -121,6 +124,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     }
 
     /// Returns the underlying [`TarFormatString`].
+    #[must_use]
     pub const fn as_inner(&self) -> &TarFormatString<N> {
         &self.0
     }
@@ -157,6 +161,7 @@ impl<const N: usize> TarFormatDecimal<N> {
     }
 
     /// Returns the underlying [`TarFormatString`].
+    #[must_use]
     pub const fn as_inner(&self) -> &TarFormatString<N> {
         self.0.as_inner()
     }
@@ -171,6 +176,7 @@ impl<const N: usize> TarFormatOctal<N> {
     }
 
     /// Returns the underlying [`TarFormatString`].
+    #[must_use]
     pub const fn as_inner(&self) -> &TarFormatString<N> {
         self.0.as_inner()
     }

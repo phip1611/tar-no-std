@@ -146,6 +146,7 @@ pub enum TypeFlag {
 
 impl TypeFlag {
     /// Whether we have a regular file.
+    #[must_use]
     pub fn is_regular_file(self) -> bool {
         // Equivalent. See spec.
         self == Self::AREGTYPE || self == Self::REGTYPE
@@ -257,6 +258,7 @@ impl PosixHeader {
 
     /// A Tar archive is terminated, if an end-of-archive entry, which consists
     /// of two 512 blocks of zero bytes, is found.
+    #[must_use]
     pub fn is_zero_block(&self) -> bool {
         let ptr = self as *const Self as *const u8;
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };

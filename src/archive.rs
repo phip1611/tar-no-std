@@ -58,11 +58,13 @@ impl<'a> ArchiveEntry<'a> {
 
     /// Filename of the entry with a maximum of 100 characters (including the
     /// terminating NULL-byte).
+    #[must_use]
     pub const fn filename(&self) -> TarFormatString<{ POSIX_1003_MAX_FILENAME_LEN }> {
         self.filename
     }
 
     /// Data of the file.
+    #[must_use]
     pub const fn data(&self) -> &'a [u8] {
         self.data
     }
@@ -74,6 +76,7 @@ impl<'a> ArchiveEntry<'a> {
     }
 
     /// Filesize in bytes.
+    #[must_use]
     pub const fn size(&self) -> usize {
         self.size
     }
@@ -174,6 +177,7 @@ impl<'a> TarArchiveRef<'a> {
     }
 
     /// Creates an [`ArchiveEntryIterator`].
+    #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator {
         ArchiveEntryIterator::new(self.data)
     }
@@ -187,6 +191,7 @@ pub struct ArchiveHeaderIterator<'a> {
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
+    #[must_use]
     pub fn new(archive: &'a [u8]) -> Self {
         assert!(!archive.is_empty());
         assert_eq!(archive.len() % BLOCKSIZE, 0);

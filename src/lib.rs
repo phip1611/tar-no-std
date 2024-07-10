@@ -95,6 +95,7 @@ SOFTWARE.
     clippy::all,
     clippy::cargo,
     clippy::nursery,
+    clippy::must_use_candidate,
     // clippy::restriction,
     // clippy::pedantic
 )]
