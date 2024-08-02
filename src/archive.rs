@@ -132,6 +132,7 @@ impl TarArchive {
     /// Iterates over all entries of the Tar archive.
     /// Returns items of type [`ArchiveEntry`].
     /// See also [`ArchiveEntryIterator`].
+    #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator {
         ArchiveEntryIterator::new(self.data.as_ref())
     }
