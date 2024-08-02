@@ -1,3 +1,7 @@
+# v0.3.2 (2024-08-02)
+
+- `TarArchive::entries` is now `#[must_use]`
+
 # v0.3.1 (2024-05-03)
 
 - More sanity checks with malformed Tar archives.
