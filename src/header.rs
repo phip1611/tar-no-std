@@ -207,6 +207,7 @@ bitflags::bitflags! {
 }
 
 /// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990.
+///
 /// "New" (version?) GNU Tar versions use this archive format by default.
 /// (<https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>).
 ///

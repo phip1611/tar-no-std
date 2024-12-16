@@ -82,7 +82,7 @@ impl<'a> ArchiveEntry<'a> {
     }
 }
 
-impl<'a> Debug for ArchiveEntry<'a> {
+impl Debug for ArchiveEntry<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ArchiveEntry")
             .field("filename", &self.filename().as_str())
@@ -257,7 +257,7 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for ArchiveEntryIterator<'a> {}
+impl ExactSizeIterator for ArchiveEntryIterator<'_> {}
 
 /// Iterator over the files of the archive.
 ///
