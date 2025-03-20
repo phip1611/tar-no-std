@@ -44,15 +44,21 @@ pub struct ArchiveEntry<'a> {
     filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
     data: &'a [u8],
     size: usize,
+    posix_header: &'a PosixHeader,
 }
 
 #[allow(unused)]
 impl<'a> ArchiveEntry<'a> {
-    const fn new(filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>, data: &'a [u8]) -> Self {
+    const fn new(
+        filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
+        data: &'a [u8],
+        posix_header: &'a PosixHeader,
+    ) -> Self {
         ArchiveEntry {
             filename,
             data,
             size: data.len(),
+            posix_header,
         }
     }
 
@@ -79,6 +85,12 @@ impl<'a> ArchiveEntry<'a> {
     #[must_use]
     pub const fn size(&self) -> usize {
         self.size
+    }
+
+    /// POSIX header for the entry.
+    #[must_use]
+    pub const fn posix_header(&self) -> &PosixHeader {
+        self.posix_header
     }
 }
 
@@ -346,7 +358,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
             filename.append(&TarFormatString::<1>::new([b'/']));
         }
         filename.append(&hdr.name);
-        Some(ArchiveEntry::new(filename, file_bytes))
+        Some(ArchiveEntry::new(filename, file_bytes, hdr))
     }
 }
 
@@ -546,6 +558,28 @@ mod tests {
     /// the tests directory were created once by me with files in the order
     /// specified in this test.
     fn assert_archive_content(entries: &[ArchiveEntry]) {
+        use crate::ModeFlags;
+        let permissions = ModeFlags::OwnerRead
+            | ModeFlags::OwnerWrite
+            | ModeFlags::OwnerExec
+            | ModeFlags::GroupRead
+            | ModeFlags::GroupWrite
+            | ModeFlags::GroupExec
+            | ModeFlags::OthersRead
+            | ModeFlags::OthersWrite
+            | ModeFlags::OthersExec;
+        let rw_rw_r__ = ModeFlags::OwnerRead
+            | ModeFlags::OwnerWrite
+            | ModeFlags::GroupRead
+            | ModeFlags::GroupWrite
+            | ModeFlags::OthersRead;
+        // Rust complains otherwise, but this is intentionally written this way.
+        #[allow(non_snake_case)]
+        let rw_r__r__ = ModeFlags::OwnerRead
+            | ModeFlags::OwnerWrite
+            | ModeFlags::GroupRead
+            | ModeFlags::OthersRead;
+
         assert_eq!(entries.len(), 3);
 
         assert_entry_content(&entries[0], "bye_world_513b.txt", 513);
@@ -553,6 +587,15 @@ mod tests {
             entries[0].data_as_str().expect("Should be valid UTF-8"),
             // .replace: Ensure that the test also works on Windows
             include_str!("../tests/bye_world_513b.txt").replace("\r\n", "\n")
+        );
+        assert_eq!(
+            entries[0]
+                .posix_header()
+                .mode
+                .to_flags()
+                .unwrap()
+                .intersection(permissions),
+            rw_rw_r__
         );
 
         // Test that an entry that needs two 512 byte data blocks is read
@@ -563,12 +606,30 @@ mod tests {
             // .replace: Ensure that the test also works on Windows
             include_str!("../tests/hello_world_513b.txt").replace("\r\n", "\n")
         );
+        assert_eq!(
+            entries[1]
+                .posix_header()
+                .mode
+                .to_flags()
+                .unwrap()
+                .intersection(permissions),
+            rw_rw_r__
+        );
 
         assert_entry_content(&entries[2], "hello_world.txt", 12);
         assert_eq!(
             entries[2].data_as_str().expect("Should be valid UTF-8"),
             "Hello World\n",
             "file content must match"
+        );
+        assert_eq!(
+            entries[2]
+                .posix_header()
+                .mode
+                .to_flags()
+                .unwrap()
+                .intersection(permissions),
+            rw_r__r__
         );
     }
 
