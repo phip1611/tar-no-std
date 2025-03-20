@@ -1,3 +1,7 @@
+# v0.3.3 (2025-03-20)
+
+- Added `ArchiveEntry::posix_header()` to get metadata for an entry
+
 # v0.3.2 (2024-08-02)
 
 - `TarArchive::entries` is now `#[must_use]`

@@ -87,7 +87,7 @@ impl<'a> ArchiveEntry<'a> {
         self.size
     }
 
-    /// POSIX header for the entry.
+    /// Returns the [`PosixHeader`] for the entry.
     #[must_use]
     pub const fn posix_header(&self) -> &PosixHeader {
         self.posix_header

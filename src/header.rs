@@ -206,9 +206,9 @@ bitflags::bitflags! {
     }
 }
 
-/// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990.
+/// Header of the TAR format as specified by POSIX (POSIX 1003.1-1990).
 ///
-/// "New" (version?) GNU Tar versions use this archive format by default.
+/// "New" GNU Tar versions use this archive format by default.
 /// (<https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>).
 ///
 /// Each file is started by such a header, that describes the size and
@@ -216,8 +216,8 @@ bitflags::bitflags! {
 /// The number of bytes can be derived from the file size.
 ///
 /// This is also mostly compatible with the "Ustar"-header and the "GNU format".
-/// Because this library only needs to fetch data and filename, we don't need
-/// further checks.
+/// Because this library mainly targets the filename, the data, and basic
+/// metadata, we don't need advanced checks for specific extensions.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct PosixHeader {
