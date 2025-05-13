@@ -1,3 +1,7 @@
+# v0.3.4 (2025-05-13)
+
+- Fixed a bug when data fills an entire block
+
 # v0.3.3 (2025-03-20)
 
 - Added `ArchiveEntry::posix_header()` to get metadata for an entry
