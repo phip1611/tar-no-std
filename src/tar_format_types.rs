@@ -104,6 +104,13 @@ pub struct TarFormatNumber<const N: usize, const R: u32>(TarFormatString<N>);
 #[repr(C)]
 pub struct TarFormatOctal<const N: usize>(TarFormatNumber<N, 8>);
 
+#[cfg(test)]
+impl<const N: usize> TarFormatOctal<N> {
+    pub const fn new(bytes: [u8; N]) -> Self {
+        Self(TarFormatNumber::<N, 8>::new(bytes))
+    }
+}
+
 /// A decimal number. Trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]

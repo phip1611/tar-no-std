@@ -336,7 +336,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         // This doesn't subtract with overflow as we ensured a minimum size in
         // the constructor.
         let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
-        if idx_end_exclusive >= max_data_end_index_exclusive {
+        if idx_end_exclusive > max_data_end_index_exclusive {
             warn!("Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid");
             return None;
         }
@@ -365,6 +365,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TarFormatOctal;
     use std::vec::Vec;
 
     #[test]
@@ -530,6 +531,33 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
 
         assert_archive_with_dir_content(&entries);
+    }
+
+    #[test]
+    fn test_data_fills_entire_block() {
+        // header, data block, 2 zero blocks
+        let mut data = [0_u8; 4 * BLOCKSIZE];
+
+        // Fill payload: We have a full block
+        {
+            data[BLOCKSIZE..BLOCKSIZE * 2].fill(0xff);
+        }
+
+        // Write header
+        {
+            let hdr = unsafe { data.as_mut_ptr().cast::<PosixHeader>().as_mut().unwrap() };
+            let blocksize_octal = "1000\0\0\0\0\0\0\0\0" /* BLOCKSIZE */;
+            let blocksize_octal_bytes: [u8; 12] = {
+                let mut val = [0; 12];
+                val.copy_from_slice(blocksize_octal.as_bytes());
+                val
+            };
+            hdr.size = TarFormatOctal::new(blocksize_octal_bytes);
+        }
+        let archive = TarArchiveRef::new(data.as_slice()).unwrap();
+        let entries = archive.entries().collect::<Vec<_>>();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].data.iter().all(|&v| v == 0xff));
     }
 
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
