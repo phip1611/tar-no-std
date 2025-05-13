@@ -17,6 +17,9 @@ homepage = "https://github.com/phip1611/tar-no-std"
 repository = "https://github.com/phip1611/tar-no-std"
 documentation = "https://docs.rs/tar-no-std"
 rust-version = "1.76.0"
+exclude = [
+  "tests"
+]
 
 # required because "env_logger" uses "log" but with dependency to std.
 resolver = "2"
