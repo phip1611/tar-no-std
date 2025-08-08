@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "tar-no-std"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "bitflags",
  "env_logger",
