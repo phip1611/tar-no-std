@@ -148,7 +148,7 @@ impl TarArchive {
     /// Returns items of type [`ArchiveEntry`].
     /// See also [`ArchiveEntryIterator`].
     #[must_use]
-    pub fn entries(&self) -> ArchiveEntryIterator {
+    pub fn entries(&self) -> ArchiveEntryIterator<'_> {
         ArchiveEntryIterator::new(self.data.as_ref())
     }
 }

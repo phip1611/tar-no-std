@@ -115,6 +115,7 @@ pub struct TarFormatOctal<const N: usize>(TarFormatNumber<N, 8>);
 
 #[cfg(test)]
 impl<const N: usize> TarFormatOctal<N> {
+    #[must_use]
     pub const fn new(bytes: [u8; N]) -> Self {
         Self(TarFormatNumber::<N, 8>::new(bytes))
     }
