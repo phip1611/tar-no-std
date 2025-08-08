@@ -121,7 +121,6 @@ impl Display for CorruptDataError {
     }
 }
 
-#[cfg(feature = "unstable")]
 impl core::error::Error for CorruptDataError {}
 
 /// Type that owns bytes on the heap, that represents a Tar archive.

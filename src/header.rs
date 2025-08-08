@@ -72,7 +72,6 @@ impl Display for InvalidTypeFlagError {
     }
 }
 
-#[cfg(feature = "unstable")]
 impl core::error::Error for InvalidTypeFlagError {}
 
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]

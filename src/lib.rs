@@ -72,12 +72,11 @@ SOFTWARE.
 //! println!("{:#?}", entries);
 //! ```
 //!
-//! ## Cargo Feature
+//! ## Cargo Features
 //!
 //! This crate allows the usage of the additional Cargo build time feature `alloc`.
 //! When this is active, the crate also provides the type `TarArchive`, which owns
-//! the data on the heap. The `unstable` feature provides additional convenience
-//! only available on the nightly channel.
+//! the data on the heap.
 //!
 //! ## Compression (`tar.gz`)
 //!
@@ -87,9 +86,8 @@ SOFTWARE.
 //!
 //! ## MSRV
 //!
-//! The MSRV is 1.76.0 stable.
+//! The MSRV is 1.85.0 stable.
 
-#![cfg_attr(feature = "unstable", feature(error_in_core))]
 #![cfg_attr(not(test), no_std)]
 #![deny(
     clippy::all,

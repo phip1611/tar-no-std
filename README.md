@@ -47,12 +47,11 @@ fn main() {
 }
 ```
 
-## Cargo Feature
+## Cargo Features
 
 This crate allows the usage of the additional Cargo build time feature `alloc`.
 When this is active, the crate also provides the type `TarArchive`, which owns
-the data on the heap. The `unstable` feature provides additional convenience
-only available on the nightly channel.
+the data on the heap.
 
 ## Compression (`tar.gz`)
 
@@ -62,4 +61,4 @@ Tar archive format from the uncompressed bytes.
 
 ## MSRV
 
-The MSRV is 1.76.0 stable.
+The MSRV is 1.85.0 stable.

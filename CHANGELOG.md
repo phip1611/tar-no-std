@@ -1,5 +1,11 @@
 # Unreleased
 
+# v0.4.0 (2025-08-08)
+- MSRV is now `1.85.0`
+- Rust edition 2024
+- Removed feature `unstable`: `core::error::Error` is now implemented
+  unconditionally for the error types.
+
 # v0.3.5 (2025-08-08)
 
 - Increased lifetime of `TarArchiveRef::entries`
