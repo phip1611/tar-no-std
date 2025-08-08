@@ -41,7 +41,7 @@ impl<const N: usize> TarFormatString<N> {
     /// capacity `N` or the data until the first NULL byte.
     #[must_use]
     pub fn size(&self) -> usize {
-        memchr::memchr(0, &self.bytes).unwrap_or(N)
+        self.bytes.iter().position(|&byte| byte == 0).unwrap_or(N)
     }
 
     /// Returns a str ref without terminating or intermediate NULL bytes. The
