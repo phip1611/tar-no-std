@@ -222,7 +222,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
     }
 
     /// Parse the memory at the given block as [`PosixHeader`].
-    fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
+    const fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
         unsafe {
             self.archive_data
                 .as_ptr()
