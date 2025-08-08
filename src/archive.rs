@@ -121,7 +121,6 @@ impl Display for CorruptDataError {
     }
 }
 
-#[cfg(feature = "unstable")]
 impl core::error::Error for CorruptDataError {}
 
 /// Type that owns bytes on the heap, that represents a Tar archive.
@@ -223,7 +222,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
     }
 
     /// Parse the memory at the given block as [`PosixHeader`].
-    fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
+    const fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
         unsafe {
             self.archive_data
                 .as_ptr()
@@ -248,7 +247,9 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let total_block_count = self.archive_data.len() / BLOCKSIZE;
         if self.next_hdr_block_index >= total_block_count {
-            warn!("Invalid block index. Probably the Tar is corrupt: an header had an invalid payload size");
+            warn!(
+                "Invalid block index. Probably the Tar is corrupt: an header had an invalid payload size"
+            );
             return None;
         }
 
@@ -345,7 +346,9 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         // the constructor.
         let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
         if idx_end_exclusive > max_data_end_index_exclusive {
-            warn!("Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid");
+            warn!(
+                "Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid"
+            );
             return None;
         }
 
@@ -502,9 +505,17 @@ mod tests {
 
         assert_eq!(entries.len(), 2);
         // Maximum length of a directory and name when the directory itself is tar'd
-        assert_entry_content(&entries[0], "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ", 7);
+        assert_entry_content(
+            &entries[0],
+            "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ",
+            7,
+        );
         // Maximum length of a directory and name when only the file is tar'd.
-        assert_entry_content(&entries[1], "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ", 7);
+        assert_entry_content(
+            &entries[1],
+            "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234/ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJ",
+            7,
+        );
     }
 
     #[test]
@@ -516,7 +527,11 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
 
         assert_eq!(entries.len(), 1);
-        assert_entry_content(&entries[0], "0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/empty", 0);
+        assert_entry_content(
+            &entries[0],
+            "0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/0123456789/empty",
+            0,
+        );
     }
 
     #[test]
