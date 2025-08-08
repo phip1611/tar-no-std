@@ -1,6 +1,11 @@
 # Unreleased
 
+# v0.4.1 (2025-08-08)
+
+- `ModeError` now also implements the `Error` trait
+
 # v0.4.0 (2025-08-08)
+-
 - MSRV is now `1.85.0`
 - Rust edition 2024
 - Removed feature `unstable`: `core::error::Error` is now implemented

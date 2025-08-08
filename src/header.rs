@@ -33,12 +33,28 @@ SOFTWARE.
 use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatDecimal, TarFormatOctal, TarFormatString};
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
+use core::error::Error;
 
 /// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
 pub enum ModeError {
     ParseInt(ParseIntError),
     IllegalMode,
+}
+
+impl Display for ModeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl Error for ModeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ModeError::ParseInt(e) => Some(e),
+            ModeError::IllegalMode => None,
+        }
+    }
 }
 
 /// Wrapper around the UNIX file permissions given in octal ASCII.
