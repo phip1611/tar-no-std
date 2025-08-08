@@ -211,7 +211,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
     /// Creates a new iterator.
     ///
     /// # Panics
-    /// Panics if the slice is zero or not a multiple of [`BLOCKSIZE`].
+    /// Panics if the slice is zero or not a multiple of `BLOCKSIZE`.
     #[must_use]
     pub fn new(archive: &'a [u8]) -> Self {
         assert!(!archive.is_empty());
