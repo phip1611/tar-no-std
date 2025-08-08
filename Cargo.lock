@@ -259,7 +259,6 @@ dependencies = [
  "bitflags",
  "env_logger",
  "log",
- "memchr",
  "num-traits",
 ]
 

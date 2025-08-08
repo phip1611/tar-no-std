@@ -35,8 +35,7 @@ required-features = ["alloc"]
 
 [dependencies]
 bitflags = "2.5"
-log = { version = "0.4", default-features = false }
-memchr = { version = "2.7", default-features = false }
+log = { version = "~0.4", default-features = false }
 num-traits =  { version = "~0.2", default-features = false }
 
 [dev-dependencies]

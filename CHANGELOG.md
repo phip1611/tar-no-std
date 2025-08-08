@@ -3,6 +3,7 @@
 # v0.3.5 (2025-08-08)
 
 - Increased lifetime of `TarArchiveRef::entries`
+- Dropped dependency on `memchr`
 
 # v0.3.4 (2025-05-13)
 
