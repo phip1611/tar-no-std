@@ -1,3 +1,9 @@
+# Unreleased
+
+# v0.3.5 (2025-08-08)
+
+- Increased lifetime of `TarArchiveRef::entries`
+
 # v0.3.4 (2025-05-13)
 
 - Fixed a bug when data fills an entire block
