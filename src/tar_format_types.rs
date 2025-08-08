@@ -3,7 +3,7 @@
 use core::fmt::{Debug, Formatter};
 use core::num::ParseIntError;
 use core::ptr::copy_nonoverlapping;
-use core::str::{from_utf8, Utf8Error};
+use core::str::{Utf8Error, from_utf8};
 use num_traits::Num;
 
 /// Base type for strings embedded in a Tar header. The length depends on the

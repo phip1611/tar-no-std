@@ -30,7 +30,7 @@ SOFTWARE.
 
 #![allow(non_upper_case_globals)]
 
-use crate::{TarFormatDecimal, TarFormatOctal, TarFormatString, BLOCKSIZE, NAME_LEN, PREFIX_LEN};
+use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatDecimal, TarFormatOctal, TarFormatString};
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
 
@@ -279,8 +279,8 @@ impl PosixHeader {
 
 #[cfg(test)]
 mod tests {
-    use crate::header::{PosixHeader, TypeFlag};
     use crate::BLOCKSIZE;
+    use crate::header::{PosixHeader, TypeFlag};
     use std::mem::size_of;
 
     /// Returns the PosixHeader at the beginning of the Tar archive.
