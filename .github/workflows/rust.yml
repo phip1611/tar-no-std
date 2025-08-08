@@ -11,8 +11,9 @@ jobs:
     strategy:
       matrix:
         runs-on:
-          - windows-latest
+          - macos-latest
           - ubuntu-latest
+          - windows-latest
         rust:
           - stable
           - nightly
