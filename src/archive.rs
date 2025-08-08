@@ -191,7 +191,7 @@ impl<'a> TarArchiveRef<'a> {
 
     /// Creates an [`ArchiveEntryIterator`].
     #[must_use]
-    pub fn entries(&self) -> ArchiveEntryIterator {
+    pub fn entries(&self) -> ArchiveEntryIterator<'a> {
         ArchiveEntryIterator::new(self.data)
     }
 }
