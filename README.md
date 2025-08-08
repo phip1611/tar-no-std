@@ -34,10 +34,6 @@ provided by the bootloader.
 use tar_no_std::TarArchiveRef;
 
 fn main() {
-    // init a logger (optional)
-    std::env::set_var("RUST_LOG", "trace");
-    env_logger::init();
-
     // also works in no_std environment (except the println!, of course)
     let archive = include_bytes!("../tests/gnu_tar_default.tar");
     let archive = TarArchiveRef::new(archive).unwrap();
