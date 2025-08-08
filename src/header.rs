@@ -48,6 +48,9 @@ pub struct Mode(TarFormatOctal<8>);
 
 impl Mode {
     /// Parses the [`ModeFlags`] from the mode string.
+    ///
+    /// # Errors
+    /// Returns [`ModeError`] for invalid values.
     pub fn to_flags(self) -> Result<ModeFlags, ModeError> {
         let bits = self.0.as_number::<u64>().map_err(ModeError::ParseInt)?;
         ModeFlags::from_bits(bits).ok_or(ModeError::IllegalMode)
@@ -78,6 +81,9 @@ pub struct TypeFlagRaw(u8);
 impl TypeFlagRaw {
     /// Tries to parse the underlying value as [`TypeFlag`]. This fails if the
     /// Tar file is corrupt and the type is invalid.
+    ///
+    /// # Errors
+    /// Returns [`InvalidTypeFlagError`] for invalid values.
     pub fn try_to_type_flag(self) -> Result<TypeFlag, InvalidTypeFlagError> {
         TypeFlag::try_from(self)
     }
@@ -252,6 +258,9 @@ impl PosixHeader {
     /// Returns the number of blocks that are required to read the whole file
     /// content. Returns an error, if the file size can't be parsed from the
     /// header.
+    ///
+    /// # Errors
+    /// Returns a [`ParseIntError`] error if the size can't be parsed.
     pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
         let parsed_size = self.size.as_number::<usize>()?;
         Ok(parsed_size.div_ceil(BLOCKSIZE))
@@ -261,7 +270,9 @@ impl PosixHeader {
     /// of two 512 blocks of zero bytes, is found.
     #[must_use]
     pub fn is_zero_block(&self) -> bool {
-        let ptr = self as *const Self as *const u8;
+        let ptr = &raw const *self;
+        let ptr = ptr.cast::<u8>();
+
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
         self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }

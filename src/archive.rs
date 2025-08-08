@@ -76,6 +76,9 @@ impl<'a> ArchiveEntry<'a> {
     }
 
     /// Data of the file as string slice, if data is valid UTF-8.
+    ///
+    /// # Errors
+    /// Returns a [`Utf8Error`] error for invalid strings.
     #[allow(clippy::missing_const_for_fn)]
     pub fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
         core::str::from_utf8(self.data)
@@ -176,9 +179,10 @@ impl<'a> TarArchiveRef<'a> {
     /// Creates a new archive wrapper type. The provided byte array is
     /// interpreted as bytes in Tar archive format.
     ///
-    /// Returns an error, if the sanity checks report problems.
+    /// # Errors
+    /// Returns an [`CorruptDataError`], if the sanity checks fail.
     pub fn new(data: &'a [u8]) -> Result<Self, CorruptDataError> {
-        Self::validate(data).map(|_| Self { data })
+        Self::validate(data).map(|()| Self { data })
     }
 
     fn validate(data: &'a [u8]) -> Result<(), CorruptDataError> {
@@ -204,6 +208,10 @@ pub struct ArchiveHeaderIterator<'a> {
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
+    /// Creates a new iterator.
+    ///
+    /// # Panics
+    /// Panics if the slice is zero or not a multiple of [`BLOCKSIZE`].
     #[must_use]
     pub fn new(archive: &'a [u8]) -> Self {
         assert!(!archive.is_empty());
@@ -318,9 +326,9 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
             if self.next_hdr()?.1.is_zero_block() {
                 // found end
                 return None;
-            } else {
-                panic!("Never expected to have a situation where self.next_hdr() returns a zero block and the next one is not a zero block, as we should never point to an 'end zero block of a regular file'");
             }
+
+            panic!("should never have a missing double zero block: is the Tar archive corrupt?");
         }
 
         let payload_size: usize = hdr
@@ -343,7 +351,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
-        let mut filename: TarFormatString<256> =
+        let mut filename =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
 
         // POXIS_1003 long filename check

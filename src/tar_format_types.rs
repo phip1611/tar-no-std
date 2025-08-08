@@ -23,11 +23,12 @@ pub struct TarFormatString<const N: usize> {
 /// This string will be null terminated if it doesn't fill the entire array.
 impl<const N: usize> TarFormatString<N> {
     /// Constructor.
+    ///
+    /// # Panics
+    /// Panics of `N` is zero, i.e., the underlying array has no length.
     #[must_use]
     pub const fn new(bytes: [u8; N]) -> Self {
-        if N == 0 {
-            panic!("Array cannot be zero length");
-        }
+        assert!(N > 0, "array should have at least one element");
         Self { bytes }
     }
 
@@ -47,6 +48,9 @@ impl<const N: usize> TarFormatString<N> {
     /// Returns a str ref without terminating or intermediate NULL bytes. The
     /// string is truncated at the first NULL byte, in case not the full length
     /// was used.
+    ///
+    /// # Errors
+    /// Returns a [`Utf8Error`] error for invalid strings.
     pub fn as_str(&self) -> Result<&str, Utf8Error> {
         from_utf8(&self.bytes[0..self.size()])
     }
@@ -55,6 +59,9 @@ impl<const N: usize> TarFormatString<N> {
     /// is found. This is necessary to properly parse certain Tar-style encoded
     /// numbers. Some ustar implementations pad spaces which prevents the proper
     /// parsing as number.
+    ///
+    /// # Errors
+    /// Returns a [`Utf8Error`] error for invalid strings.
     pub fn as_str_until_first_space(&self) -> Result<&str, Utf8Error> {
         from_utf8(&self.bytes[0..self.size()]).map(|str| {
             let end_index_exclusive = str.find(' ').unwrap_or(str.len());
@@ -62,12 +69,14 @@ impl<const N: usize> TarFormatString<N> {
         })
     }
 
-    /// Append to end of string. Panics if there is not enough capacity.
+    /// Append to end of string.
+    ///
+    /// # Panics
+    /// Panics if there is not enough capacity.
     pub fn append<const S: usize>(&mut self, other: &TarFormatString<S>) {
         let resulting_length = self.size() + other.size();
-        if resulting_length > N {
-            panic!("Result to long for capacity {}", N);
-        }
+
+        assert!(resulting_length <= N, "Result to long for capacity {N}");
 
         unsafe {
             let dst = self.bytes.as_mut_ptr().add(self.size());
@@ -122,6 +131,13 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
         Self(TarFormatString::<N> { bytes })
     }
 
+    /// Interprets the underlying value as a number of the specified type using
+    /// its respective radix.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying value cannot be parsed as a number
+    /// of the specified type and respective radix.
     pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
@@ -160,6 +176,13 @@ impl<const N: usize> Debug for TarFormatDecimal<N> {
 }
 
 impl<const N: usize> TarFormatDecimal<N> {
+    /// Interprets the underlying value as a number of the specified type using
+    /// its respective radix.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying value cannot be parsed as a number
+    /// of the specified type and respective radix.
     pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
@@ -175,6 +198,13 @@ impl<const N: usize> TarFormatDecimal<N> {
 }
 
 impl<const N: usize> TarFormatOctal<N> {
+    /// Interprets the underlying value as a number of the specified type using
+    /// its respective radix.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying value cannot be parsed as a number
+    /// of the specified type and respective radix.
     pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
