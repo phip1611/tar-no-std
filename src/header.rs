@@ -270,7 +270,7 @@ impl PosixHeader {
     /// of two 512 blocks of zero bytes, is found.
     #[must_use]
     pub fn is_zero_block(&self) -> bool {
-        let ptr = &raw const *self;
+        let ptr = core::ptr::addr_of!(*self);
         let ptr = ptr.cast::<u8>();
 
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
