@@ -1,5 +1,9 @@
 # Unreleased
 
+# v0.4.2 (2025-08-25)
+
+- documentation improvements
+
 # v0.4.1 (2025-08-08)
 
 - `ModeError` now also implements the `Error` trait
