@@ -31,9 +31,9 @@ SOFTWARE.
 #![allow(non_upper_case_globals)]
 
 use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatDecimal, TarFormatOctal, TarFormatString};
+use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
-use core::error::Error;
 
 /// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
@@ -51,8 +51,8 @@ impl Display for ModeError {
 impl Error for ModeError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ModeError::ParseInt(e) => Some(e),
-            ModeError::IllegalMode => None,
+            Self::ParseInt(e) => Some(e),
+            Self::IllegalMode => None,
         }
     }
 }
@@ -299,16 +299,16 @@ mod tests {
     use crate::header::{PosixHeader, TypeFlag};
     use std::mem::size_of;
 
-    /// Returns the PosixHeader at the beginning of the Tar archive.
+    /// Returns the [`PosixHeader`] at the beginning of the Tar archive.
     fn bytes_to_archive(tar_archive_data: &[u8]) -> &PosixHeader {
-        unsafe { (tar_archive_data.as_ptr() as *const PosixHeader).as_ref() }.unwrap()
+        unsafe { (tar_archive_data.as_ptr().cast::<PosixHeader>()).as_ref() }.unwrap()
     }
 
     #[test]
     fn test_display_header() {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
-        println!("{:#?}'", archive);
+        println!("{archive:#?}'");
     }
 
     #[test]

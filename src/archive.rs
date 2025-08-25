@@ -139,6 +139,9 @@ impl TarArchive {
     /// interpreted as bytes in Tar archive format.
     ///
     /// Returns an error, if the sanity checks report problems.
+    ///
+    /// # Errors
+    /// Returns an [`CorruptDataError`], if the sanity checks fail.
     pub fn new(data: Box<[u8]>) -> Result<Self, CorruptDataError> {
         TarArchiveRef::validate(&data).map(|_| Self { data })
     }
@@ -409,7 +412,7 @@ mod tests {
                 "hello_world_513b.txt",
                 "hello_world.txt",
             ]
-        )
+        );
     }
 
     /// The test here is that no panics occur.
@@ -419,7 +422,7 @@ mod tests {
 
         let iter = ArchiveHeaderIterator::new(data);
         let entries = iter.map(|(_, hdr)| hdr).collect::<Vec<_>>();
-        println!("{:#?}", entries);
+        println!("{entries:#?}");
     }
 
     /// The test here is that no panics occur.
@@ -427,7 +430,7 @@ mod tests {
     fn test_print_archive_list() {
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
-        println!("{:#?}", entries);
+        println!("{entries:#?}");
     }
 
     /// Tests various weird (= invalid, corrupt) tarballs that are bundled

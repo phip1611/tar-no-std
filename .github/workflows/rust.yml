@@ -76,8 +76,8 @@ jobs:
         with:
           key: "${{ matrix.runs-on }}-${{ matrix.rust }}"
       - name: Rustfmt
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --features alloc
+        run: cargo clippy --features alloc --all-targets
       - name: Rustdoc
         run: cargo doc --no-deps --document-private-items --features alloc
