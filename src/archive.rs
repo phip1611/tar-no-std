@@ -156,6 +156,7 @@ impl TarArchive {
 }
 
 #[cfg(feature = "alloc")]
+#[allow(clippy::fallible_impl_from)]
 impl From<Box<[u8]>> for TarArchive {
     fn from(data: Box<[u8]>) -> Self {
         Self::new(data).unwrap()
