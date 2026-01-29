@@ -69,7 +69,7 @@ impl Mode {
     /// Returns [`ModeError`] for invalid values.
     pub fn to_flags(self) -> Result<ModeFlags, ModeError> {
         let bits = self.0.as_number::<u64>().map_err(ModeError::ParseInt)?;
-        ModeFlags::from_bits(bits).ok_or(ModeError::IllegalMode)
+        ModeFlags::from_bits(bits & 0o7777).ok_or(ModeError::IllegalMode)
     }
 }
 
