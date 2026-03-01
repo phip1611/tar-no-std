@@ -30,7 +30,7 @@ name = "alloc_feature"
 required-features = ["alloc"]
 
 [dependencies]
-bitflags = "2.10"
+bitflags = "2.11"
 log = { version = "~0.4", default-features = false }
 num-traits =  { version = "~0.2", default-features = false }
 
