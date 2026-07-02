@@ -270,7 +270,7 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
         // In directory entries, for example, the size field has other
         // semantics. See spec.
         if let Ok(typeflag) = hdr.typeflag.try_to_type_flag() {
-            if typeflag.is_regular_file() {
+            if typeflag.has_payload() {
                 let payload_block_count = hdr
                     .payload_block_count()
                     .inspect_err(|e| {
@@ -482,15 +482,13 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        // UNSUPPORTED. Uses extensions.
-        /*let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_pax.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_pax.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
-        assert_archive_content(&entries);*/
+        assert_archive_content(&entries);
 
-        // UNSUPPORTED. Uses extensions.
-        /*let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_posix.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_posix.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
-        assert_archive_content(&entries);*/
+        assert_archive_content(&entries);
 
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();

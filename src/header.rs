@@ -172,6 +172,11 @@ impl TypeFlag {
         // Equivalent. See spec.
         self == Self::AREGTYPE || self == Self::REGTYPE
     }
+
+    /// Whether this entry has payload blocks described by the size field.
+    pub(crate) fn has_payload(self) -> bool {
+        self.is_regular_file() || matches!(self, Self::CONTTYPE | Self::XHDTYPE | Self::XGLTYPE)
+    }
 }
 
 impl TryFrom<TypeFlagRaw> for TypeFlag {
