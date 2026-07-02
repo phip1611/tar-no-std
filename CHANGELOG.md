@@ -1,5 +1,7 @@
 # Unreleased
 
+- Removed the incorrect `ExactSizeIterator` implementation for `ArchiveEntryIterator`.
+
 # v0.4.2 (2025-08-25)
 
 - documentation improvements

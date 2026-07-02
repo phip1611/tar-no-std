@@ -287,8 +287,6 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     }
 }
 
-impl ExactSizeIterator for ArchiveEntryIterator<'_> {}
-
 /// Iterator over the files of the archive.
 ///
 /// Only regular files are supported, but not directories, links, or other
