@@ -227,14 +227,17 @@ impl<'a> ArchiveHeaderIterator<'a> {
 
     /// Parse the memory at the given block as [`PosixHeader`].
     const fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
-        unsafe {
-            self.archive_data
-                .as_ptr()
-                .add(block_index * BLOCKSIZE)
-                .cast::<PosixHeader>()
-                .as_ref()
-                .unwrap()
-        }
+        let blocks = self.archive_data.len() / BLOCKSIZE;
+        assert!(block_index < blocks);
+
+        let ptr = self
+            .archive_data
+            .as_ptr()
+            .wrapping_add(block_index * BLOCKSIZE)
+            .cast::<PosixHeader>();
+        // SAFETY: We asserted that the block is in bound and the memory is
+        // valid.
+        unsafe { ptr.as_ref().unwrap() }
     }
 }
 
@@ -574,6 +577,7 @@ mod tests {
 
         // Write header
         {
+            // SAFETY: We know that the header is at the beginning of the data.
             let hdr = unsafe { data.as_mut_ptr().cast::<PosixHeader>().as_mut().unwrap() };
             let blocksize_octal = "1000\0\0\0\0\0\0\0\0" /* BLOCKSIZE */;
             let blocksize_octal_bytes: [u8; 12] = {

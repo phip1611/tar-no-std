@@ -78,9 +78,11 @@ impl<const N: usize> TarFormatString<N> {
 
         assert!(resulting_length <= N, "Result to long for capacity {N}");
 
+        let dst = self.bytes.as_mut_ptr().wrapping_add(self.size());
+        let src = other.bytes.as_ptr();
+        // SAFETY: We are sure that the destination is valid and has sufficient
+        // length.
         unsafe {
-            let dst = self.bytes.as_mut_ptr().add(self.size());
-            let src = other.bytes.as_ptr();
             copy_nonoverlapping(src, dst, other.size());
         }
 

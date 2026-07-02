@@ -89,7 +89,8 @@ SOFTWARE.
     clippy::all,
     clippy::cargo,
     clippy::nursery,
-    clippy::must_use_candidate
+    clippy::must_use_candidate,
+    clippy::undocumented_unsafe_blocks
 )]
 #![deny(missing_debug_implementations)]
 #![deny(rustdoc::all)]

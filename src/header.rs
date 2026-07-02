@@ -288,6 +288,7 @@ impl PosixHeader {
         let ptr = core::ptr::addr_of!(*self);
         let ptr = ptr.cast::<u8>();
 
+        // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
         self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }
@@ -301,6 +302,7 @@ mod tests {
 
     /// Returns the [`PosixHeader`] at the beginning of the Tar archive.
     fn bytes_to_archive(tar_archive_data: &[u8]) -> &PosixHeader {
+        // SAFETY: In the test we know the length is sufficient.
         unsafe { (tar_archive_data.as_ptr().cast::<PosixHeader>()).as_ref() }.unwrap()
     }
 
