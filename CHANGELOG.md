@@ -1,6 +1,7 @@
 # Unreleased
 
 - Removed the incorrect `ExactSizeIterator` implementation for `ArchiveEntryIterator`.
+- Numeric fields with invalid UTF-8 bytes now fail parsing instead of being read as zero.
 
 # v0.4.2 (2025-08-25)
 
