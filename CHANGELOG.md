@@ -11,6 +11,7 @@
   metadata is skipped rather than applied, so filenames and sizes must remain
   available in the regular file headers.
 - Documentation improvements
+- `TarArchiveRef::new` and `TarArchive::new` now reject invalid headers, checksums, payload sizes, and missing archive termination.
 
 # v0.4.2 (2025-08-25)
 
