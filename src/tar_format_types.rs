@@ -164,7 +164,7 @@ impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
         if let Ok(sub_array) = from_utf8(sub_array) {
             write!(f, " [{}]", sub_array)?;
         }
-        write!(f, " [{:?}]", &self.0.bytes)
+        write!(f, " [{:?}]", self.0.bytes)
     }
 }
 
