@@ -158,9 +158,13 @@ impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         let sub_array = &self.0.bytes[0..self.0.size()];
         match self.as_number::<u64>() {
-            Err(msg) => write!(f, "{} [{}]", msg, from_utf8(sub_array).unwrap()),
-            Ok(val) => write!(f, "{} [{}]", val, from_utf8(sub_array).unwrap()),
+            Err(msg) => write!(f, "{}", msg),
+            Ok(val) => write!(f, "{}", val),
+        }?;
+        if let Ok(sub_array) = from_utf8(sub_array) {
+            write!(f, " [{}]", sub_array)?;
         }
+        write!(f, " [{:?}]", &self.0.bytes)
     }
 }
 
