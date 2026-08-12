@@ -372,7 +372,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         ) == (Ok("ustar"), Ok("00"), false)
         {
             filename.append(&hdr.prefix);
-            filename.append(&TarFormatString::<1>::new([b'/']));
+            filename.append(&TarFormatString::<1>::new(*b"/"));
         }
         filename.append(&hdr.name);
         Some(ArchiveEntry::new(filename, file_bytes, hdr))

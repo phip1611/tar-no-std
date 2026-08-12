@@ -241,7 +241,7 @@ mod tar_format_string_tests {
 
     #[test]
     fn test_one_byte_string() {
-        let s = TarFormatString::new([b'A']);
+        let s = TarFormatString::new(*b"A");
         assert_eq!(size_of_val(&s), 1);
         assert!(!s.is_empty());
         assert_eq!(s.size(), 1);
@@ -250,7 +250,7 @@ mod tar_format_string_tests {
 
     #[test]
     fn test_two_byte_string_nul_terminated() {
-        let s = TarFormatString::new([b'A', 0, b'B']);
+        let s = TarFormatString::new(*b"A\0B");
         assert_eq!(size_of_val(&s), 3);
         assert!(!s.is_empty());
         assert_eq!(s.size(), 1);
@@ -259,7 +259,7 @@ mod tar_format_string_tests {
 
     #[test]
     fn test_str_until_first_space() {
-        let s = TarFormatString::new([b'A', b'B', b' ', b'X', 0]);
+        let s = TarFormatString::new(*b"AB X\0");
         assert_eq!(size_of_val(&s), 5);
         assert!(!s.is_empty());
         assert_eq!(s.size(), 4);
@@ -281,14 +281,14 @@ mod tar_format_string_tests {
         assert_eq!(s.as_str(), Ok(""));
 
         // When adding ABC
-        s.append(&TarFormatString::new([b'A', b'B', b'C']));
+        s.append(&TarFormatString::new(*b"ABC"));
         // Then the string contains the additional 3 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
         assert_eq!(s.size(), 3);
         assert_eq!(s.as_str(), Ok("ABC"));
 
-        s.append(&TarFormatString::new([b'D', b'E', b'F']));
+        s.append(&TarFormatString::new(*b"DEF"));
         // Then the string contains the additional 3 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
@@ -302,7 +302,7 @@ mod tar_format_string_tests {
         assert_eq!(s.size(), 18);
         assert_eq!(s.as_str(), Ok("ABCDEFAAAAAAAAAAAA"));
 
-        s.append(&TarFormatString::new([b'A'; 1]));
+        s.append(&TarFormatString::new(*b"A"));
         // Then the string contains the additional 1 chars
         assert_eq!(size_of_val(&s), 20);
         assert!(!s.is_empty());
