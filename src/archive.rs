@@ -271,7 +271,9 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
                 let payload_block_count = hdr
                     .payload_block_count()
                     .inspect_err(|e| {
-                        log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
+                        if !hdr.is_zero_block() {
+                            log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
+                        }
                     })
                     .ok()?;
                 self.next_hdr_block_index += payload_block_count;
