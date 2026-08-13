@@ -1,5 +1,7 @@
 # Unreleased
 
+- `CorruptDataError` now identifies the failed archive validation invariant.
+  The `struct` is now an `enum`.
 - `ArchiveHeaderIterator::new` is now private. Use `TarArchive::headers` or
   `TarArchiveRef::headers` to iterate over validated archive headers.
 

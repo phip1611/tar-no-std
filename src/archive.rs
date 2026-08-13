@@ -107,14 +107,39 @@ impl Debug for ArchiveEntry<'_> {
     }
 }
 
-/// The data is corrupt and doesn't present a valid Tar archive. Reasons for
-/// that are:
-/// - the data is empty
-/// - the data is not a multiple of 512 (the BLOCKSIZE)
-/// - the data is not at least [`MIN_BLOCK_COUNT`] blocks long
-/// - the data has invalid headers, checksums, payload sizes, or termination
+/// Describes why archive validation failed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct CorruptDataError;
+pub enum CorruptDataError {
+    /// The archive contains no data.
+    EmptyArchive,
+    /// The archive length is not a multiple of the 512-byte block size
+    /// ([`BLOCKSIZE`]).
+    InvalidBlockSize,
+    /// The archive is shorter than [`MIN_BLOCK_COUNT`] blocks.
+    TooShort,
+    /// The header at `block_index` has an invalid checksum.
+    InvalidChecksum {
+        /// Index of the invalid header block.
+        block_index: usize,
+    },
+    /// The header at `block_index` has an unsupported type flag.
+    InvalidTypeFlag {
+        /// Index of the invalid header block.
+        block_index: usize,
+    },
+    /// The payload size in the header at `block_index` is invalid.
+    InvalidPayloadSize {
+        /// Index of the header with the invalid payload size.
+        block_index: usize,
+    },
+    /// A payload starting at `block_index` extends past the archive.
+    PayloadExtendsBeyondArchive {
+        /// Index of the header that describes the payload.
+        block_index: usize,
+    },
+    /// The archive does not end with two zero blocks.
+    MissingTerminator,
+}
 
 impl Display for CorruptDataError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -223,11 +248,15 @@ impl<'a> TarArchiveRef<'a> {
     /// [`BLOCKSIZE`], and must contain at least [`MIN_BLOCK_COUNT`] blocks.
     /// Header-specific validation is delegated to [`Self::validate_headers`].
     fn validate(data: &'a [u8]) -> Result<(), CorruptDataError> {
-        let is_malformed = (data.len() % BLOCKSIZE) != 0;
-        let has_min_block_count = data.len() / BLOCKSIZE >= MIN_BLOCK_COUNT;
-        (!data.is_empty() && !is_malformed && has_min_block_count)
-            .then_some(())
-            .ok_or(CorruptDataError)?;
+        if data.is_empty() {
+            return Err(CorruptDataError::EmptyArchive);
+        }
+        if data.len() % BLOCKSIZE != 0 {
+            return Err(CorruptDataError::InvalidBlockSize);
+        }
+        if data.len() / BLOCKSIZE < MIN_BLOCK_COUNT {
+            return Err(CorruptDataError::TooShort);
+        }
 
         Self::validate_headers(data)
     }
@@ -248,7 +277,7 @@ impl<'a> TarArchiveRef<'a> {
 
         loop {
             if block_index >= total_block_count {
-                return Err(CorruptDataError);
+                return Err(CorruptDataError::MissingTerminator);
             }
 
             let hdr = header_iter.block_as_header(block_index);
@@ -256,24 +285,30 @@ impl<'a> TarArchiveRef<'a> {
                 return (block_index + 1 < total_block_count
                     && header_iter.block_as_header(block_index + 1).is_zero_block())
                 .then_some(())
-                .ok_or(CorruptDataError);
+                .ok_or(CorruptDataError::MissingTerminator);
             }
 
             if !hdr.has_valid_checksum() {
-                return Err(CorruptDataError);
+                return Err(CorruptDataError::InvalidChecksum { block_index });
             }
 
             let typeflag = hdr
                 .typeflag
                 .try_to_type_flag()
-                .map_err(|_| CorruptDataError)?;
-            let mut next_block_index = block_index.checked_add(1).ok_or(CorruptDataError)?;
+                .map_err(|_| CorruptDataError::InvalidTypeFlag { block_index })?;
+            let mut next_block_index = block_index
+                .checked_add(1)
+                .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
             if typeflag.has_payload() {
-                let payload_block_count =
-                    hdr.payload_block_count().map_err(|_| CorruptDataError)?;
+                let payload_block_count = hdr
+                    .payload_block_count()
+                    .map_err(|_| CorruptDataError::InvalidPayloadSize { block_index })?;
                 next_block_index = next_block_index
                     .checked_add(payload_block_count)
-                    .ok_or(CorruptDataError)?;
+                    .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
+            }
+            if next_block_index > total_block_count {
+                return Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index });
             }
             block_index = next_block_index;
         }
@@ -462,14 +497,30 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_constructor_returns_error() {
-        assert_eq!(TarArchiveRef::new(&[0]), Err(CorruptDataError));
-        assert_eq!(TarArchiveRef::new(&[]), Err(CorruptDataError));
+        assert_eq!(
+            TarArchiveRef::new(&[0]),
+            Err(CorruptDataError::InvalidBlockSize)
+        );
+        assert_eq!(
+            TarArchiveRef::new(&[]),
+            Err(CorruptDataError::EmptyArchive)
+        );
+        assert_eq!(
+            TarArchiveRef::new(&[0; BLOCKSIZE]),
+            Err(CorruptDataError::TooShort)
+        );
         assert!(TarArchiveRef::new(&[0; BLOCKSIZE * MIN_BLOCK_COUNT]).is_ok());
 
         #[cfg(feature = "alloc")]
         {
-            assert_eq!(TarArchive::new(vec![].into_boxed_slice()), Err(CorruptDataError));
-            assert_eq!(TarArchive::new(vec![0].into_boxed_slice()), Err(CorruptDataError));
+            assert_eq!(
+                TarArchive::new(vec![].into_boxed_slice()),
+                Err(CorruptDataError::EmptyArchive)
+            );
+            assert_eq!(
+                TarArchive::new(vec![0].into_boxed_slice()),
+                Err(CorruptDataError::InvalidBlockSize)
+            );
             assert!(TarArchive::new(vec![0; BLOCKSIZE * MIN_BLOCK_COUNT].into_boxed_slice()).is_ok());
         };
     }
@@ -530,18 +581,15 @@ mod tests {
         let main_tarball =
             TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar")).unwrap();
 
-        let mut all_entries = vec![];
-        for tarball in main_tarball.entries() {
-            if let Ok(tarball) = TarArchiveRef::new(tarball.data()) {
-                for entry in tarball.entries() {
-                    all_entries.push(entry.filename());
-                }
-            }
-        }
-
-        // Test succeeds if this works without a panic.
-        for entry in all_entries {
-            eprintln!("\"{entry:?}\",");
+        // Each entry is a malformed archive generated by the fuzzer. Check
+        // that validation rejects every input instead of merely avoiding a
+        // panic while parsing it.
+        for fuzzing_input in main_tarball.entries() {
+            assert!(
+                TarArchiveRef::new(fuzzing_input.data()).is_err(),
+                "fuzzing input {:?} should be rejected",
+                fuzzing_input.filename(),
+            );
         }
     }
 
@@ -675,7 +723,46 @@ mod tests {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
         data[0] ^= 0xff;
 
-        assert_eq!(TarArchiveRef::new(data.as_slice()), Err(CorruptDataError));
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidChecksum { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_invalid_type_flag() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[156] = b'?';
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidTypeFlag { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_invalid_payload_size() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[124] = 0xff;
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidPayloadSize { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_payload_beyond_archive() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[124..136].copy_from_slice(b"77777777777\0");
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index: 0 })
+        );
     }
 
     #[test]
@@ -683,7 +770,10 @@ mod tests {
         let mut data = [0; BLOCKSIZE * MIN_BLOCK_COUNT];
         data[BLOCKSIZE] = 1;
 
-        assert_eq!(TarArchiveRef::new(&data), Err(CorruptDataError));
+        assert_eq!(
+            TarArchiveRef::new(&data),
+            Err(CorruptDataError::MissingTerminator)
+        );
     }
 
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
@@ -713,6 +803,12 @@ mod tests {
         let mut checksum_bytes = [0; 8];
         checksum_bytes.copy_from_slice(checksum.as_bytes());
         hdr.cksum = TarFormatOctal::new(checksum_bytes);
+    }
+
+    fn write_first_header_checksum(data: &mut [u8]) {
+        // SAFETY: all callers provide at least one complete header block.
+        let hdr = unsafe { data.as_mut_ptr().cast::<PosixHeader>().as_mut().unwrap() };
+        write_checksum(hdr);
     }
 
     /// Tests that the parsed archive matches the expected order. The tarballs
