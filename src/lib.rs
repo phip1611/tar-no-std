@@ -37,16 +37,22 @@ SOFTWARE.
 //!
 //! ## Limitations
 //!
-//! This crate is simple and focuses on reading files and their content from a Tar
-//! archive. Historic basic Tar and ustar [formats](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
-//! are supported. Other formats may work, but likely without all supported
-//! features. GNU Extensions such as sparse files, incremental archives, and
-//! long filename extension are not supported.
+//! This crate focuses on reading regular files and their contents from historic
+//! basic Tar and ustar [archives](https://www.gnu.org/software/tar/manual/html_section/Formats.html).
+//! It can also read PAX archives that use extended records only for optional
+//! metadata, such as high-precision timestamps. PAX metadata is skipped rather
+//! than applied, so filenames and sizes must remain available in the regular file
+//! headers.
+//!
+//! Other formats may work when their regular file headers are compatible with the
+//! supported formats. GNU extensions such as sparse files, incremental archives,
+//! and GNU long names are not supported (yet).
 //!
 //! The maximum supported file name length is 256 characters excluding the
 //! NULL-byte (using the Tar name/prefix longname implementation of ustar). The
-//! maximum supported file size is 8GiB. Directories are supported, but only regular
-//! fields are yielded in iteration. The path is reflected in their file name.
+//! maximum supported file size is 8GiB. Directory, link, and other special entries
+//! are skipped; iteration yields only regular files. Directory paths encoded in a
+//! regular file's name are preserved.
 //!
 //! ## Use Case
 //!

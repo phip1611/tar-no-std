@@ -159,9 +159,9 @@ pub enum TypeFlag {
     /// Operating systems which do not allow contiguous allocation should silently treat this type
     /// as a normal file.
     CONTTYPE = b'7',
-    /// Extended header referring to the next file in the archive
+    /// POSIX PAX extended header applying to the next entry in the archive.
     XHDTYPE = b'x',
-    /// Global extended header
+    /// POSIX PAX global extended header applying to following entries.
     XGLTYPE = b'g',
 }
 

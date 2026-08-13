@@ -146,9 +146,9 @@ impl TarArchive {
         TarArchiveRef::validate(&data).map(|_| Self { data })
     }
 
-    /// Iterates over all entries of the Tar archive.
-    /// Returns items of type [`ArchiveEntry`].
-    /// See also [`ArchiveEntryIterator`].
+    /// Iterates over the regular files in the Tar archive.
+    ///
+    /// See [`ArchiveEntryIterator`] for format support and limitations.
     #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator<'_> {
         ArchiveEntryIterator::new(self.data.as_ref())
@@ -196,7 +196,9 @@ impl<'a> TarArchiveRef<'a> {
             .ok_or(CorruptDataError)
     }
 
-    /// Creates an [`ArchiveEntryIterator`].
+    /// Iterates over the regular files in the Tar archive.
+    ///
+    /// See [`ArchiveEntryIterator`] for format support and limitations.
     #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator<'a> {
         ArchiveEntryIterator::new(self.data)
@@ -204,6 +206,9 @@ impl<'a> TarArchiveRef<'a> {
 }
 
 /// Iterates over the headers of the Tar archive.
+///
+/// PAX extended headers are returned as headers, while their payload blocks are
+/// skipped before the next iteration.
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
@@ -289,9 +294,14 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
 
 /// Iterator over the files of the archive.
 ///
-/// Only regular files are supported, but not directories, links, or other
-/// special types ([`crate::TypeFlag`]). The full path to files is reflected
-/// in their file name.
+/// Only regular files are yielded. Directories, links, PAX extended headers,
+/// and other recognized special types ([`crate::TypeFlag`]) are skipped.
+///
+/// This permits reading PAX archives that use extended records only for
+/// optional metadata, such as high-precision timestamps. PAX metadata is
+/// skipped rather than applied, so filenames and sizes must remain available
+/// in the regular file headers. Directory paths encoded in those names are
+/// preserved.
 #[derive(Debug)]
 pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
 
@@ -482,6 +492,8 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
+        // PAX metadata is ignored; these files also have usable regular
+        // headers.
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_pax.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
