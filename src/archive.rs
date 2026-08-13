@@ -31,7 +31,7 @@ use crate::{BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
 use alloc::boxed::Box;
 use core::fmt::{Debug, Display, Formatter};
 use core::str::Utf8Error;
-use log::{error, warn};
+use log::warn;
 
 /// Minimum amount of blocks that an archive must have to be considered sane.
 /// - one header block
@@ -107,24 +107,84 @@ impl Debug for ArchiveEntry<'_> {
     }
 }
 
-/// The data is corrupt and doesn't present a valid Tar archive. Reasons for
-/// that are:
-/// - the data is empty
-/// - the data is not a multiple of 512 (the BLOCKSIZE)
-/// - the data is not at least [`MIN_BLOCK_COUNT`] blocks long
+/// Describes why archive validation failed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct CorruptDataError;
+pub enum CorruptDataError {
+    /// The archive contains no data.
+    EmptyArchive,
+    /// The archive length is not a multiple of the 512-byte block size.
+    InvalidBlockSize,
+    /// The archive is shorter than [`MIN_BLOCK_COUNT`] blocks.
+    TooShort {
+        /// Total number of bytes in the archive.
+        byte_count: usize,
+        /// Number of complete 512-byte blocks in the archive.
+        block_count: usize,
+    },
+    /// The header at `block_index` has an invalid checksum.
+    InvalidChecksum {
+        /// Index of the invalid header block.
+        block_index: usize,
+    },
+    /// The header at `block_index` has an unsupported type flag.
+    InvalidTypeFlag {
+        /// Index of the invalid header block.
+        block_index: usize,
+    },
+    /// The payload size in the header at `block_index` is invalid.
+    InvalidPayloadSize {
+        /// Index of the header with the invalid payload size.
+        block_index: usize,
+    },
+    /// A payload starting at `block_index` extends past the archive.
+    PayloadExtendsBeyondArchive {
+        /// Index of the header that describes the payload.
+        block_index: usize,
+    },
+    /// The archive does not end with two zero blocks.
+    MissingTerminator,
+}
 
 impl Display for CorruptDataError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Debug::fmt(self, f)
+        match self {
+            Self::EmptyArchive => f.write_str("archive contains no data"),
+            Self::InvalidBlockSize => f.write_str("archive length is not a multiple of 512 bytes"),
+            Self::TooShort {
+                byte_count,
+                block_count,
+            } => write!(
+                f,
+                "archive is too short: {byte_count} bytes ({block_count} blocks), expected at least {MIN_BLOCK_COUNT} blocks"
+            ),
+            Self::InvalidChecksum { block_index } => {
+                write!(f, "header at block {block_index} has an invalid checksum")
+            }
+            Self::InvalidTypeFlag { block_index } => {
+                write!(f, "header at block {block_index} has an invalid type flag")
+            }
+            Self::InvalidPayloadSize { block_index } => {
+                write!(
+                    f,
+                    "header at block {block_index} has an invalid payload size"
+                )
+            }
+            Self::PayloadExtendsBeyondArchive { block_index } => write!(
+                f,
+                "payload described by header at block {block_index} extends beyond the archive"
+            ),
+            Self::MissingTerminator => f.write_str("archive does not end with two zero blocks"),
+        }
     }
 }
 
 impl core::error::Error for CorruptDataError {}
 
-/// Type that owns bytes on the heap, that represents a Tar archive.
-/// Unlike [`TarArchiveRef`], this type takes ownership of the data.
+/// An owning, validated Tar archive.
+///
+/// Unlike [`TarArchiveRef`], this type takes ownership of the archive bytes.
+/// [`TarArchive::new`] validates the supplied data before constructing the
+/// archive.
 ///
 /// This is only available with the `alloc` feature of this crate.
 #[cfg(feature = "alloc")]
@@ -135,13 +195,21 @@ pub struct TarArchive {
 
 #[cfg(feature = "alloc")]
 impl TarArchive {
-    /// Creates a new archive wrapper type. The provided byte array is
-    /// interpreted as bytes in Tar archive format.
+    /// Creates an owning wrapper around validated Tar archive bytes.
+    ///
+    /// The supplied data must have a valid block layout, contain at least the
+    /// minimum number of blocks, and end with two zero blocks. Each archive
+    /// header must have a valid checksum and type flag, and every payload size
+    /// must lead to a header or the terminating zero blocks within the archive.
+    ///
+    /// Validation checks the archive structure required for safe iteration. It
+    /// does not guarantee that every supported entry can be consumed without
+    /// further format-specific limitations; see [`ArchiveEntryIterator`].
     ///
     /// Returns an error, if the sanity checks report problems.
     ///
     /// # Errors
-    /// Returns an [`CorruptDataError`], if the sanity checks fail.
+    /// Returns [`CorruptDataError`] if validation fails.
     pub fn new(data: Box<[u8]>) -> Result<Self, CorruptDataError> {
         TarArchiveRef::validate(&data).map(|_| Self { data })
     }
@@ -152,6 +220,15 @@ impl TarArchive {
     #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator<'_> {
         ArchiveEntryIterator::new(self.data.as_ref())
+    }
+
+    /// Iterates over the headers in the Tar archive.
+    ///
+    /// PAX extended headers are returned as normal [`PosixHeader`] values,
+    /// while their payload blocks are skipped before the next iteration.
+    #[must_use]
+    pub fn headers(&self) -> ArchiveHeaderIterator<'_> {
+        ArchiveHeaderIterator::new(self.data.as_ref())
     }
 }
 
@@ -179,21 +256,96 @@ pub struct TarArchiveRef<'a> {
 
 #[allow(unused)]
 impl<'a> TarArchiveRef<'a> {
-    /// Creates a new archive wrapper type. The provided byte array is
-    /// interpreted as bytes in Tar archive format.
+    /// Creates a borrowed wrapper around validated Tar archive bytes.
+    ///
+    /// The supplied data must have a valid block layout, contain at least the
+    /// minimum number of blocks, and end with two zero blocks. Each archive
+    /// header must have a valid checksum and type flag, and every payload size
+    /// must lead to a header or the terminating zero blocks within the archive.
+    ///
+    /// Validation checks the archive structure required for safe iteration. It
+    /// does not guarantee that every supported entry can be consumed without
+    /// further format-specific limitations; see [`ArchiveEntryIterator`].
     ///
     /// # Errors
-    /// Returns an [`CorruptDataError`], if the sanity checks fail.
+    /// Returns [`CorruptDataError`] if validation fails.
     pub fn new(data: &'a [u8]) -> Result<Self, CorruptDataError> {
         Self::validate(data).map(|()| Self { data })
     }
 
+    /// Validates the archive's overall block layout and header sequence.
+    ///
+    /// The archive must not be empty, must have a length that is a multiple of
+    /// [`BLOCKSIZE`], and must contain at least [`MIN_BLOCK_COUNT`] blocks.
+    /// Header-specific validation is delegated to [`Self::validate_headers`].
     fn validate(data: &'a [u8]) -> Result<(), CorruptDataError> {
-        let is_malformed = (data.len() % BLOCKSIZE) != 0;
-        let has_min_block_count = data.len() / BLOCKSIZE >= MIN_BLOCK_COUNT;
-        (!data.is_empty() && !is_malformed && has_min_block_count)
-            .then_some(())
-            .ok_or(CorruptDataError)
+        if data.is_empty() {
+            return Err(CorruptDataError::EmptyArchive);
+        }
+        if data.len() % BLOCKSIZE != 0 {
+            return Err(CorruptDataError::InvalidBlockSize);
+        }
+        if data.len() / BLOCKSIZE < MIN_BLOCK_COUNT {
+            return Err(CorruptDataError::TooShort {
+                byte_count: data.len(),
+                block_count: data.len() / BLOCKSIZE,
+            });
+        }
+
+        Self::validate_headers(data)
+    }
+
+    /// Validates the archive's header sequence and terminator.
+    ///
+    /// Rejects invalid checksums, type flags, and payload sizes, as well as a
+    /// missing double-zero terminator.
+    /*
+     * Do not use ArchiveHeaderIterator's Iterator implementation here. It
+     * assumes validated data, whereas validation must reject malformed headers
+     * and only accept an explicit double-zero terminator.
+     */
+    fn validate_headers(data: &'a [u8]) -> Result<(), CorruptDataError> {
+        let header_iter = ArchiveHeaderIterator::new(data);
+        let total_block_count = data.len() / BLOCKSIZE;
+        let mut block_index = 0;
+
+        loop {
+            if block_index >= total_block_count {
+                return Err(CorruptDataError::MissingTerminator);
+            }
+
+            let hdr = header_iter.block_as_header(block_index);
+            if hdr.is_zero_block() {
+                return (block_index + 1 < total_block_count
+                    && header_iter.block_as_header(block_index + 1).is_zero_block())
+                .then_some(())
+                .ok_or(CorruptDataError::MissingTerminator);
+            }
+
+            if !hdr.has_valid_checksum() {
+                return Err(CorruptDataError::InvalidChecksum { block_index });
+            }
+
+            let typeflag = hdr
+                .typeflag
+                .try_to_type_flag()
+                .map_err(|_| CorruptDataError::InvalidTypeFlag { block_index })?;
+            let mut next_block_index = block_index
+                .checked_add(1)
+                .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
+            if typeflag.has_payload() {
+                let payload_block_count = hdr
+                    .payload_block_count()
+                    .map_err(|_| CorruptDataError::InvalidPayloadSize { block_index })?;
+                next_block_index = next_block_index
+                    .checked_add(payload_block_count)
+                    .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
+            }
+            if next_block_index > total_block_count {
+                return Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index });
+            }
+            block_index = next_block_index;
+        }
     }
 
     /// Iterates over the regular files in the Tar archive.
@@ -203,12 +355,24 @@ impl<'a> TarArchiveRef<'a> {
     pub fn entries(&self) -> ArchiveEntryIterator<'a> {
         ArchiveEntryIterator::new(self.data)
     }
+
+    /// Iterates over the headers in the Tar archive.
+    ///
+    /// PAX extended headers are returned as normal [`PosixHeader`] values,
+    /// while their payload blocks are skipped before the next iteration.
+    #[must_use]
+    pub fn headers(&self) -> ArchiveHeaderIterator<'a> {
+        ArchiveHeaderIterator::new(self.data)
+    }
 }
 
-/// Iterates over the headers of the Tar archive.
+/// Iterates over the headers of a validated Tar archive.
 ///
-/// PAX extended headers are returned as headers, while their payload blocks are
-/// skipped before the next iteration.
+/// PAX extended headers are returned as normal [`PosixHeader`] values, while
+/// their payload blocks are skipped before the next iteration. Obtain this
+/// iterator with
+#[cfg_attr(feature = "alloc", doc = " [`TarArchive::headers`] or")]
+/// [`TarArchiveRef::headers`].
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
@@ -216,12 +380,8 @@ pub struct ArchiveHeaderIterator<'a> {
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
-    /// Creates a new iterator.
-    ///
-    /// # Panics
-    /// Panics if the slice is zero or not a multiple of `BLOCKSIZE`.
     #[must_use]
-    pub fn new(archive: &'a [u8]) -> Self {
+    fn new(archive: &'a [u8]) -> Self {
         assert!(!archive.is_empty());
         assert_eq!(archive.len() % BLOCKSIZE, 0);
         Self {
@@ -251,22 +411,21 @@ type BlockIndex = usize;
 impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     type Item = (BlockIndex, &'a PosixHeader);
 
-    /// Returns the next header. Internally, it updates the necessary data
-    /// structures to not read the same header multiple times.
-    ///
-    /// This returns `None` if either no further headers are found or if a
-    /// header can't be parsed.
+    /// Returns the next header and advances past its payload blocks.
     fn next(&mut self) -> Option<Self::Item> {
         let total_block_count = self.archive_data.len() / BLOCKSIZE;
         if self.next_hdr_block_index >= total_block_count {
-            warn!(
-                "Invalid block index. Probably the Tar is corrupt: an header had an invalid payload size"
-            );
             return None;
         }
 
         let hdr = self.block_as_header(self.next_hdr_block_index);
         let block_index = self.next_hdr_block_index;
+
+        // Validation guarantees a double-zero terminator. The first zero block
+        // marks the end of the archive.
+        if hdr.is_zero_block() {
+            return None;
+        }
 
         // Start at next block on next iteration.
         self.next_hdr_block_index += 1;
@@ -274,18 +433,15 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
         // We only update the block index for types that have a payload.
         // In directory entries, for example, the size field has other
         // semantics. See spec.
-        if let Ok(typeflag) = hdr.typeflag.try_to_type_flag() {
-            if typeflag.has_payload() {
-                let payload_block_count = hdr
-                    .payload_block_count()
-                    .inspect_err(|e| {
-                        if !hdr.is_zero_block() {
-                            log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
-                        }
-                    })
-                    .ok()?;
-                self.next_hdr_block_index += payload_block_count;
-            }
+        let typeflag = hdr
+            .typeflag
+            .try_to_type_flag()
+            .expect("type flag should be valid after successful validation");
+        if typeflag.has_payload() {
+            let payload_block_count = hdr
+                .payload_block_count()
+                .expect("payload size should be valid after successful validation");
+            self.next_hdr_block_index += payload_block_count;
         }
 
         Some((block_index, hdr))
@@ -326,8 +482,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         while !hdr
             .typeflag
             .try_to_type_flag()
-            .inspect_err(|e| error!("Invalid TypeFlag: {e:?}"))
-            .ok()?
+            .expect("type flag should be valid after successful validation")
             .is_regular_file()
         {
             warn!(
@@ -339,35 +494,14 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
             (block_index, hdr) = self.next_hdr()?;
         }
 
-        // check if we found end of archive (two zero blocks)
-        if hdr.is_zero_block() {
-            if self.next_hdr()?.1.is_zero_block() {
-                // found end
-                return None;
-            }
-
-            panic!("should never have a missing double zero block: is the Tar archive corrupt?");
-        }
-
         let payload_size: usize = hdr
             .size
             .as_number()
-            .inspect_err(|e| error!("Can't parse the file size from the header. {e:#?}"))
-            .ok()?;
+            .expect("payload size should be valid after successful validation");
 
         let idx_first_data_block = block_index + 1;
         let idx_begin = idx_first_data_block * BLOCKSIZE;
         let idx_end_exclusive = idx_begin + payload_size;
-
-        // This doesn't subtract with overflow as we ensured a minimum size in
-        // the constructor.
-        let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
-        if idx_end_exclusive > max_data_end_index_exclusive {
-            warn!(
-                "Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid"
-            );
-            return None;
-        }
 
         let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
@@ -399,14 +533,33 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_constructor_returns_error() {
-        assert_eq!(TarArchiveRef::new(&[0]), Err(CorruptDataError));
-        assert_eq!(TarArchiveRef::new(&[]), Err(CorruptDataError));
+        assert_eq!(
+            TarArchiveRef::new(&[0]),
+            Err(CorruptDataError::InvalidBlockSize)
+        );
+        assert_eq!(
+            TarArchiveRef::new(&[]),
+            Err(CorruptDataError::EmptyArchive)
+        );
+        assert_eq!(
+            TarArchiveRef::new(&[0; BLOCKSIZE]),
+            Err(CorruptDataError::TooShort {
+                byte_count: BLOCKSIZE,
+                block_count: 1,
+            })
+        );
         assert!(TarArchiveRef::new(&[0; BLOCKSIZE * MIN_BLOCK_COUNT]).is_ok());
 
         #[cfg(feature = "alloc")]
         {
-            assert_eq!(TarArchive::new(vec![].into_boxed_slice()), Err(CorruptDataError));
-            assert_eq!(TarArchive::new(vec![0].into_boxed_slice()), Err(CorruptDataError));
+            assert_eq!(
+                TarArchive::new(vec![].into_boxed_slice()),
+                Err(CorruptDataError::EmptyArchive)
+            );
+            assert_eq!(
+                TarArchive::new(vec![0].into_boxed_slice()),
+                Err(CorruptDataError::InvalidBlockSize)
+            );
             assert!(TarArchive::new(vec![0; BLOCKSIZE * MIN_BLOCK_COUNT].into_boxed_slice()).is_ok());
         };
     }
@@ -414,7 +567,9 @@ mod tests {
     #[test]
     fn test_header_iterator() {
         let archive = include_bytes!("../tests/gnu_tar_default.tar");
-        let iter = ArchiveHeaderIterator::new(archive);
+        let iter = TarArchiveRef::new(archive)
+            .expect("test archive should pass validation")
+            .headers();
         let names = iter
             .map(|(_i, hdr)| hdr.name.as_str().unwrap())
             .collect::<Vec<_>>();
@@ -434,7 +589,9 @@ mod tests {
     fn test_print_archive_headers() {
         let data = include_bytes!("../tests/gnu_tar_default.tar");
 
-        let iter = ArchiveHeaderIterator::new(data);
+        let iter = TarArchiveRef::new(data)
+            .expect("test archive should pass validation")
+            .headers();
         let entries = iter.map(|(_, hdr)| hdr).collect::<Vec<_>>();
         println!("{entries:#?}");
     }
@@ -451,7 +608,8 @@ mod tests {
     /// within this file. The tarball(s) originate from a fuzzing process from a
     /// GitHub contributor [0].
     ///
-    /// The test succeeds if no panics occur.
+    /// The outer archive is valid, while every nested fuzzer input must fail
+    /// checksum validation without panicking.
     ///
     /// [0] https://github.com/phip1611/tar-no-std/issues/12#issuecomment-2092632090
     #[test]
@@ -461,20 +619,25 @@ mod tests {
         env_logger::init();*/
 
         let main_tarball =
-            TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar")).unwrap();
+            TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar"))
+                .expect("archive containing fuzzing inputs should pass validation");
 
-        let mut all_entries = vec![];
-        for tarball in main_tarball.entries() {
-            let tarball = TarArchiveRef::new(tarball.data()).unwrap();
-            for entry in tarball.entries() {
-                all_entries.push(entry.filename());
-            }
+        // Every corpus entry corrupts a header checksum. Check the validation
+        // category without coupling this test to the exact header that is
+        // reached first.
+        let mut input_count = 0;
+        for fuzzing_input in main_tarball.entries() {
+            let result = TarArchiveRef::new(fuzzing_input.data());
+            assert!(
+                // TODO we should fix the checksum of at least some of these
+                // to exercise more code paths.
+                matches!(result, Err(CorruptDataError::InvalidChecksum { .. })),
+                "fuzzing input {:?} should fail checksum validation: {result:?}",
+                fuzzing_input.filename(),
+            );
+            input_count += 1;
         }
-
-        // Test succeeds if this works without a panic.
-        for entry in all_entries {
-            eprintln!("\"{entry:?}\",");
-        }
+        assert_eq!(input_count, 32);
     }
 
     /// Tests to read the entries from existing archives in various Tar flavors.
@@ -594,11 +757,70 @@ mod tests {
                 val
             };
             hdr.size = TarFormatOctal::new(blocksize_octal_bytes);
+            write_checksum(hdr);
         }
         let archive = TarArchiveRef::new(data.as_slice()).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].data.iter().all(|&v| v == 0xff));
+    }
+
+    #[test]
+    fn test_constructor_rejects_invalid_header_checksum() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[0] ^= 0xff;
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidChecksum { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_invalid_type_flag() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[156] = b'?';
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidTypeFlag { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_invalid_payload_size() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[124] = 0xff;
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidPayloadSize { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_payload_beyond_archive() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[124..136].copy_from_slice(b"77777777777\0");
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_missing_end_marker() {
+        let mut data = [0; BLOCKSIZE * MIN_BLOCK_COUNT];
+        data[BLOCKSIZE] = 1;
+
+        assert_eq!(
+            TarArchiveRef::new(&data),
+            Err(CorruptDataError::MissingTerminator)
+        );
     }
 
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
@@ -621,6 +843,19 @@ mod tests {
         assert_eq!(entry.filename().as_str(), Ok(filename));
         assert_eq!(entry.size(), size);
         assert_eq!(entry.data().len(), size);
+    }
+
+    fn write_checksum(hdr: &mut PosixHeader) {
+        let checksum = format!("{:06o}\0 ", hdr.computed_checksum());
+        let mut checksum_bytes = [0; 8];
+        checksum_bytes.copy_from_slice(checksum.as_bytes());
+        hdr.cksum = TarFormatOctal::new(checksum_bytes);
+    }
+
+    fn write_first_header_checksum(data: &mut [u8]) {
+        // SAFETY: all callers provide at least one complete header block.
+        let hdr = unsafe { data.as_mut_ptr().cast::<PosixHeader>().as_mut().unwrap() };
+        write_checksum(hdr);
     }
 
     /// Tests that the parsed archive matches the expected order. The tarballs

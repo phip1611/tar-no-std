@@ -1,5 +1,10 @@
 # Unreleased
 
+- `CorruptDataError` now identifies the failed archive validation invariant.
+  The `struct` is now an `enum`.
+- `ArchiveHeaderIterator::new` is now private. Use `TarArchive::headers` or
+  `TarArchiveRef::headers` to iterate over validated archive headers.
+
 # v0.5.0 (2026-08-13)
 
 - Removed the incorrect `ExactSizeIterator` implementation for
@@ -11,6 +16,7 @@
   metadata is skipped rather than applied, so filenames and sizes must remain
   available in the regular file headers.
 - Documentation improvements
+- `TarArchiveRef::new` and `TarArchive::new` now reject invalid headers, checksums, payload sizes, and missing archive termination.
 
 # v0.4.2 (2025-08-25)
 

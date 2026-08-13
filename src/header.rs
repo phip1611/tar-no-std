@@ -35,6 +35,9 @@ use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
 
+const CKSUM_OFFSET: usize = 148;
+const CKSUM_LEN: usize = 8;
+
 /// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
 pub enum ModeError {
@@ -284,6 +287,32 @@ impl PosixHeader {
     pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
         let parsed_size = self.size.as_number::<usize>()?;
         Ok(parsed_size.div_ceil(BLOCKSIZE))
+    }
+
+    pub(crate) fn has_valid_checksum(&self) -> bool {
+        self.cksum
+            .as_number::<u64>()
+            .is_ok_and(|cksum| cksum == self.computed_checksum())
+    }
+
+    pub(crate) fn computed_checksum(&self) -> u64 {
+        let ptr = core::ptr::addr_of!(*self);
+        let ptr = ptr.cast::<u8>();
+
+        // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
+        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+
+        self_bytes
+            .iter()
+            .enumerate()
+            .map(|(i, &byte)| {
+                if (CKSUM_OFFSET..CKSUM_OFFSET + CKSUM_LEN).contains(&i) {
+                    u64::from(b' ')
+                } else {
+                    u64::from(byte)
+                }
+            })
+            .sum()
     }
 
     /// A Tar archive is terminated, if an end-of-archive entry, which consists
