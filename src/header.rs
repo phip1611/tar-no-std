@@ -390,16 +390,6 @@ mod tests {
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
-        /* UNSUPPORTED YET. Uses extensions..
-        let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_pax.tar"));
-        assert_eq!(archive.typeflag, TypeFlag::REGTYPE, "the first entry is a regular file!");
-        assert_eq!(archive.name.as_string().as_str(), "bye_world_513b.txt"); */
-
-        /* UNSUPPORTED YET. Uses extensions.
-        let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_posix.tar"));
-        unsupported extension XHDTYPE assert_eq!(archive.typeflag, TypeFlag::REGTYPE, "the first entry is a regular file!");
-        assert_eq!(archive.name.as_string().as_str(), "bye_world_513b.txt"); */
-
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_ustar.tar"));
         assert_eq!(
             archive.typeflag.try_to_type_flag(),
@@ -416,6 +406,17 @@ mod tests {
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
+    }
+
+    #[test]
+    fn test_parse_pax_headers() {
+        for archive_data in [
+            include_bytes!("../tests/gnu_tar_pax.tar") as &[u8],
+            include_bytes!("../tests/gnu_tar_posix.tar") as &[u8],
+        ] {
+            let archive = bytes_to_archive(archive_data);
+            assert_eq!(archive.typeflag.try_to_type_flag(), Ok(TypeFlag::XHDTYPE));
+        }
     }
 
     #[test]
