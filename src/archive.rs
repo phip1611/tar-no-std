@@ -112,11 +112,15 @@ impl Debug for ArchiveEntry<'_> {
 pub enum CorruptDataError {
     /// The archive contains no data.
     EmptyArchive,
-    /// The archive length is not a multiple of the 512-byte block size
-    /// ([`BLOCKSIZE`]).
+    /// The archive length is not a multiple of the 512-byte block size.
     InvalidBlockSize,
     /// The archive is shorter than [`MIN_BLOCK_COUNT`] blocks.
-    TooShort,
+    TooShort {
+        /// Total number of bytes in the archive.
+        byte_count: usize,
+        /// Number of complete 512-byte blocks in the archive.
+        block_count: usize,
+    },
     /// The header at `block_index` has an invalid checksum.
     InvalidChecksum {
         /// Index of the invalid header block.
@@ -143,7 +147,34 @@ pub enum CorruptDataError {
 
 impl Display for CorruptDataError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Debug::fmt(self, f)
+        match self {
+            Self::EmptyArchive => f.write_str("archive contains no data"),
+            Self::InvalidBlockSize => f.write_str("archive length is not a multiple of 512 bytes"),
+            Self::TooShort {
+                byte_count,
+                block_count,
+            } => write!(
+                f,
+                "archive is too short: {byte_count} bytes ({block_count} blocks), expected at least {MIN_BLOCK_COUNT} blocks"
+            ),
+            Self::InvalidChecksum { block_index } => {
+                write!(f, "header at block {block_index} has an invalid checksum")
+            }
+            Self::InvalidTypeFlag { block_index } => {
+                write!(f, "header at block {block_index} has an invalid type flag")
+            }
+            Self::InvalidPayloadSize { block_index } => {
+                write!(
+                    f,
+                    "header at block {block_index} has an invalid payload size"
+                )
+            }
+            Self::PayloadExtendsBeyondArchive { block_index } => write!(
+                f,
+                "payload described by header at block {block_index} extends beyond the archive"
+            ),
+            Self::MissingTerminator => f.write_str("archive does not end with two zero blocks"),
+        }
     }
 }
 
@@ -255,7 +286,10 @@ impl<'a> TarArchiveRef<'a> {
             return Err(CorruptDataError::InvalidBlockSize);
         }
         if data.len() / BLOCKSIZE < MIN_BLOCK_COUNT {
-            return Err(CorruptDataError::TooShort);
+            return Err(CorruptDataError::TooShort {
+                byte_count: data.len(),
+                block_count: data.len() / BLOCKSIZE,
+            });
         }
 
         Self::validate_headers(data)
@@ -336,7 +370,9 @@ impl<'a> TarArchiveRef<'a> {
 ///
 /// PAX extended headers are returned as normal [`PosixHeader`] values, while
 /// their payload blocks are skipped before the next iteration. Obtain this
-/// iterator with [`TarArchive::headers`] or [`TarArchiveRef::headers`].
+/// iterator with
+#[cfg_attr(feature = "alloc", doc = " [`TarArchive::headers`] or")]
+/// [`TarArchiveRef::headers`].
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
@@ -507,7 +543,10 @@ mod tests {
         );
         assert_eq!(
             TarArchiveRef::new(&[0; BLOCKSIZE]),
-            Err(CorruptDataError::TooShort)
+            Err(CorruptDataError::TooShort {
+                byte_count: BLOCKSIZE,
+                block_count: 1,
+            })
         );
         assert!(TarArchiveRef::new(&[0; BLOCKSIZE * MIN_BLOCK_COUNT]).is_ok());
 
