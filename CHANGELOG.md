@@ -1,5 +1,17 @@
 # Unreleased
 
+# v0.5.0 (2026-08-13)
+
+- Removed the incorrect `ExactSizeIterator` implementation for
+  `ArchiveEntryIterator`.
+- Numeric fields with invalid UTF-8 bytes now fail parsing instead of being
+  read as zero.
+- Added limited support for reading POSIX PAX archives that use extended
+  records only for optional metadata, such as high-precision timestamps. PAX
+  metadata is skipped rather than applied, so filenames and sizes must remain
+  available in the regular file headers.
+- Documentation improvements
+
 # v0.4.2 (2025-08-25)
 
 - documentation improvements

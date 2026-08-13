@@ -159,9 +159,9 @@ pub enum TypeFlag {
     /// Operating systems which do not allow contiguous allocation should silently treat this type
     /// as a normal file.
     CONTTYPE = b'7',
-    /// Extended header referring to the next file in the archive
+    /// POSIX PAX extended header applying to the next entry in the archive.
     XHDTYPE = b'x',
-    /// Global extended header
+    /// POSIX PAX global extended header applying to following entries.
     XGLTYPE = b'g',
 }
 
@@ -171,6 +171,11 @@ impl TypeFlag {
     pub fn is_regular_file(self) -> bool {
         // Equivalent. See spec.
         self == Self::AREGTYPE || self == Self::REGTYPE
+    }
+
+    /// Whether this entry has payload blocks described by the size field.
+    pub(crate) fn has_payload(self) -> bool {
+        self.is_regular_file() || matches!(self, Self::CONTTYPE | Self::XHDTYPE | Self::XGLTYPE)
     }
 }
 
@@ -288,6 +293,7 @@ impl PosixHeader {
         let ptr = core::ptr::addr_of!(*self);
         let ptr = ptr.cast::<u8>();
 
+        // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
         let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
         self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }
@@ -301,6 +307,7 @@ mod tests {
 
     /// Returns the [`PosixHeader`] at the beginning of the Tar archive.
     fn bytes_to_archive(tar_archive_data: &[u8]) -> &PosixHeader {
+        // SAFETY: In the test we know the length is sufficient.
         unsafe { (tar_archive_data.as_ptr().cast::<PosixHeader>()).as_ref() }.unwrap()
     }
 
@@ -383,16 +390,6 @@ mod tests {
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
 
-        /* UNSUPPORTED YET. Uses extensions..
-        let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_pax.tar"));
-        assert_eq!(archive.typeflag, TypeFlag::REGTYPE, "the first entry is a regular file!");
-        assert_eq!(archive.name.as_string().as_str(), "bye_world_513b.txt"); */
-
-        /* UNSUPPORTED YET. Uses extensions.
-        let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_posix.tar"));
-        unsupported extension XHDTYPE assert_eq!(archive.typeflag, TypeFlag::REGTYPE, "the first entry is a regular file!");
-        assert_eq!(archive.name.as_string().as_str(), "bye_world_513b.txt"); */
-
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_ustar.tar"));
         assert_eq!(
             archive.typeflag.try_to_type_flag(),
@@ -409,6 +406,17 @@ mod tests {
             "the first entry is a regular file!"
         );
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
+    }
+
+    #[test]
+    fn test_parse_pax_headers() {
+        for archive_data in [
+            include_bytes!("../tests/gnu_tar_pax.tar") as &[u8],
+            include_bytes!("../tests/gnu_tar_posix.tar") as &[u8],
+        ] {
+            let archive = bytes_to_archive(archive_data);
+            assert_eq!(archive.typeflag.try_to_type_flag(), Ok(TypeFlag::XHDTYPE));
+        }
     }
 
     #[test]

@@ -78,9 +78,11 @@ impl<const N: usize> TarFormatString<N> {
 
         assert!(resulting_length <= N, "Result to long for capacity {N}");
 
+        let dst = self.bytes.as_mut_ptr().wrapping_add(self.size());
+        let src = other.bytes.as_ptr();
+        // SAFETY: We are sure that the destination is valid and has sufficient
+        // length.
         unsafe {
-            let dst = self.bytes.as_mut_ptr().add(self.size());
-            let src = other.bytes.as_ptr();
             copy_nonoverlapping(src, dst, other.size());
         }
 
@@ -143,7 +145,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     where
         T: num_traits::Num,
     {
-        let str = self.0.as_str_until_first_space().unwrap_or("0");
+        let str = self.0.as_str_until_first_space().unwrap_or("");
         T::from_str_radix(str, R)
     }
 
@@ -158,12 +160,9 @@ impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         let sub_array = &self.0.bytes[0..self.0.size()];
         match self.as_number::<u64>() {
-            Err(msg) => write!(f, "{}", msg),
-            Ok(val) => write!(f, "{}", val),
+            Err(msg) => write!(f, "{} [{:?}]", msg, from_utf8(sub_array)),
+            Ok(val) => write!(f, "{} [{:?}]", val, from_utf8(sub_array)),
         }?;
-        if let Ok(sub_array) = from_utf8(sub_array) {
-            write!(f, " [{}]", sub_array)?;
-        }
         write!(f, " [{:?}]", self.0.bytes)
     }
 }
@@ -327,5 +326,13 @@ mod tar_format_number_tests {
         let str = [b'0', b'1', b'0', b' ', 0];
         let str = TarFormatNumber::<5, 10>::new(str);
         assert_eq!(str.as_number::<u64>(), Ok(10));
+    }
+
+    #[test]
+    fn test_as_number_with_invalid_utf8() {
+        let str = TarFormatNumber::<2, 10>::new([0xff, 0]);
+        assert!(str.as_number::<u64>().is_err());
+
+        let _ = format!("{str:?}");
     }
 }

@@ -146,9 +146,9 @@ impl TarArchive {
         TarArchiveRef::validate(&data).map(|_| Self { data })
     }
 
-    /// Iterates over all entries of the Tar archive.
-    /// Returns items of type [`ArchiveEntry`].
-    /// See also [`ArchiveEntryIterator`].
+    /// Iterates over the regular files in the Tar archive.
+    ///
+    /// See [`ArchiveEntryIterator`] for format support and limitations.
     #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator<'_> {
         ArchiveEntryIterator::new(self.data.as_ref())
@@ -196,7 +196,9 @@ impl<'a> TarArchiveRef<'a> {
             .ok_or(CorruptDataError)
     }
 
-    /// Creates an [`ArchiveEntryIterator`].
+    /// Iterates over the regular files in the Tar archive.
+    ///
+    /// See [`ArchiveEntryIterator`] for format support and limitations.
     #[must_use]
     pub fn entries(&self) -> ArchiveEntryIterator<'a> {
         ArchiveEntryIterator::new(self.data)
@@ -204,6 +206,9 @@ impl<'a> TarArchiveRef<'a> {
 }
 
 /// Iterates over the headers of the Tar archive.
+///
+/// PAX extended headers are returned as headers, while their payload blocks are
+/// skipped before the next iteration.
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
@@ -227,14 +232,17 @@ impl<'a> ArchiveHeaderIterator<'a> {
 
     /// Parse the memory at the given block as [`PosixHeader`].
     const fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
-        unsafe {
-            self.archive_data
-                .as_ptr()
-                .add(block_index * BLOCKSIZE)
-                .cast::<PosixHeader>()
-                .as_ref()
-                .unwrap()
-        }
+        let blocks = self.archive_data.len() / BLOCKSIZE;
+        assert!(block_index < blocks);
+
+        let ptr = self
+            .archive_data
+            .as_ptr()
+            .wrapping_add(block_index * BLOCKSIZE)
+            .cast::<PosixHeader>();
+        // SAFETY: We asserted that the block is in bound and the memory is
+        // valid.
+        unsafe { ptr.as_ref().unwrap() }
     }
 }
 
@@ -267,7 +275,7 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
         // In directory entries, for example, the size field has other
         // semantics. See spec.
         if let Ok(typeflag) = hdr.typeflag.try_to_type_flag() {
-            if typeflag.is_regular_file() {
+            if typeflag.has_payload() {
                 let payload_block_count = hdr
                     .payload_block_count()
                     .inspect_err(|e| {
@@ -284,13 +292,16 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     }
 }
 
-impl ExactSizeIterator for ArchiveEntryIterator<'_> {}
-
 /// Iterator over the files of the archive.
 ///
-/// Only regular files are supported, but not directories, links, or other
-/// special types ([`crate::TypeFlag`]). The full path to files is reflected
-/// in their file name.
+/// Only regular files are yielded. Directories, links, PAX extended headers,
+/// and other recognized special types ([`crate::TypeFlag`]) are skipped.
+///
+/// This permits reading PAX archives that use extended records only for
+/// optional metadata, such as high-precision timestamps. PAX metadata is
+/// skipped rather than applied, so filenames and sizes must remain available
+/// in the regular file headers. Directory paths encoded in those names are
+/// preserved.
 #[derive(Debug)]
 pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
 
@@ -481,15 +492,15 @@ mod tests {
         let entries = archive.entries().collect::<Vec<_>>();
         assert_archive_content(&entries);
 
-        // UNSUPPORTED. Uses extensions.
-        /*let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_pax.tar"));
+        // PAX metadata is ignored; these files also have usable regular
+        // headers.
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_pax.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
-        assert_archive_content(&entries);*/
+        assert_archive_content(&entries);
 
-        // UNSUPPORTED. Uses extensions.
-        /*let archive = TarArchive::new(include_bytes!("../tests/gnu_tar_posix.tar"));
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_posix.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
-        assert_archive_content(&entries);*/
+        assert_archive_content(&entries);
 
         let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_ustar.tar")).unwrap();
         let entries = archive.entries().collect::<Vec<_>>();
@@ -574,6 +585,7 @@ mod tests {
 
         // Write header
         {
+            // SAFETY: We know that the header is at the beginning of the data.
             let hdr = unsafe { data.as_mut_ptr().cast::<PosixHeader>().as_mut().unwrap() };
             let blocksize_octal = "1000\0\0\0\0\0\0\0\0" /* BLOCKSIZE */;
             let blocksize_octal_bytes: [u8; 12] = {

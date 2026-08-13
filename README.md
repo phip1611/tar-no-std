@@ -8,18 +8,25 @@ Library to read Tar archives in `no_std` environments with zero allocations. If
 you have a standard environment and need full feature support, I recommend the
 use of <https://crates.io/crates/tar> instead.
 
+## TL;DR
+
+Most ordinary Tar archives containing regular files will work.
+
 ## Limitations
 
-This crate is simple and focuses on reading files and their content from a Tar
-archive. Historic basic Tar and ustar [formats](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
-are supported. Other formats may work, but likely without all supported
-features. GNU Extensions such as sparse files, incremental archives, and long
-filename extension are not supported.
+Archives created by a typical GNU tar or macOS `tar` invocation work when their
+regular-file names and sizes fit in the regular Tar headers. This includes
+basic Tar and ustar [archives](https://www.gnu.org/software/tar/manual/html_section/Formats.html),
+as well as PAX archives that use extended records only for optional metadata
+such as high-precision timestamps. PAX headers and their metadata are skipped;
+the following regular-file headers provide the filenames and sizes.
 
-The maximum supported file name length is 256 characters excluding the
-NULL-byte (using the Tar name/prefix longname implementation of ustar). The
-maximum supported file size is 8GiB. Directories are supported, but only regular
-fields are yielded in iteration. The path is reflected in their file name.
+Archives that rely on unsupported extensions do not work correctly. This
+includes GNU long names, sparse files, incremental archives, and PAX-only paths
+or file sizes. The maximum supported filename length is 256 characters
+excluding the NULL-byte, and the maximum supported file size is 8GiB.
+Directories, links, and other special entries are skipped; iteration yields only
+regular files, preserving directory paths encoded in their names.
 
 ## Use Case
 
