@@ -31,7 +31,7 @@ use crate::{BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
 use alloc::boxed::Box;
 use core::fmt::{Debug, Display, Formatter};
 use core::str::Utf8Error;
-use log::{error, warn};
+use log::warn;
 
 /// Minimum amount of blocks that an archive must have to be considered sane.
 /// - one header block
@@ -165,6 +165,15 @@ impl TarArchive {
     pub fn entries(&self) -> ArchiveEntryIterator<'_> {
         ArchiveEntryIterator::new(self.data.as_ref())
     }
+
+    /// Iterates over the headers in the Tar archive.
+    ///
+    /// PAX extended headers are returned as normal [`PosixHeader`] values,
+    /// while their payload blocks are skipped before the next iteration.
+    #[must_use]
+    pub fn headers(&self) -> ArchiveHeaderIterator<'_> {
+        ArchiveHeaderIterator::new(self.data.as_ref())
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -228,9 +237,9 @@ impl<'a> TarArchiveRef<'a> {
     /// Rejects invalid checksums, type flags, and payload sizes, as well as a
     /// missing double-zero terminator.
     /*
-     * Do not use ArchiveHeaderIterator here. Its best-effort iteration maps
-     * malformed headers and out-of-bounds payloads to None, whereas validation
-     * must reject them and only accept an explicit double-zero terminator.
+     * Do not use ArchiveHeaderIterator's Iterator implementation here. It
+     * assumes validated data, whereas validation must reject malformed headers
+     * and only accept an explicit double-zero terminator.
      */
     fn validate_headers(data: &'a [u8]) -> Result<(), CorruptDataError> {
         let header_iter = ArchiveHeaderIterator::new(data);
@@ -277,12 +286,22 @@ impl<'a> TarArchiveRef<'a> {
     pub fn entries(&self) -> ArchiveEntryIterator<'a> {
         ArchiveEntryIterator::new(self.data)
     }
+
+    /// Iterates over the headers in the Tar archive.
+    ///
+    /// PAX extended headers are returned as normal [`PosixHeader`] values,
+    /// while their payload blocks are skipped before the next iteration.
+    #[must_use]
+    pub fn headers(&self) -> ArchiveHeaderIterator<'a> {
+        ArchiveHeaderIterator::new(self.data)
+    }
 }
 
-/// Iterates over the headers of the Tar archive.
+/// Iterates over the headers of a validated Tar archive.
 ///
-/// PAX extended headers are returned as headers, while their payload blocks are
-/// skipped before the next iteration.
+/// PAX extended headers are returned as normal [`PosixHeader`] values, while
+/// their payload blocks are skipped before the next iteration. Obtain this
+/// iterator with [`TarArchive::headers`] or [`TarArchiveRef::headers`].
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
     archive_data: &'a [u8],
@@ -290,12 +309,8 @@ pub struct ArchiveHeaderIterator<'a> {
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
-    /// Creates a new iterator.
-    ///
-    /// # Panics
-    /// Panics if the slice is zero or not a multiple of `BLOCKSIZE`.
     #[must_use]
-    pub fn new(archive: &'a [u8]) -> Self {
+    fn new(archive: &'a [u8]) -> Self {
         assert!(!archive.is_empty());
         assert_eq!(archive.len() % BLOCKSIZE, 0);
         Self {
@@ -325,22 +340,21 @@ type BlockIndex = usize;
 impl<'a> Iterator for ArchiveHeaderIterator<'a> {
     type Item = (BlockIndex, &'a PosixHeader);
 
-    /// Returns the next header. Internally, it updates the necessary data
-    /// structures to not read the same header multiple times.
-    ///
-    /// This returns `None` if either no further headers are found or if a
-    /// header can't be parsed.
+    /// Returns the next header and advances past its payload blocks.
     fn next(&mut self) -> Option<Self::Item> {
         let total_block_count = self.archive_data.len() / BLOCKSIZE;
         if self.next_hdr_block_index >= total_block_count {
-            warn!(
-                "Invalid block index. Probably the Tar is corrupt: an header had an invalid payload size"
-            );
             return None;
         }
 
         let hdr = self.block_as_header(self.next_hdr_block_index);
         let block_index = self.next_hdr_block_index;
+
+        // Validation guarantees a double-zero terminator. The first zero block
+        // marks the end of the archive.
+        if hdr.is_zero_block() {
+            return None;
+        }
 
         // Start at next block on next iteration.
         self.next_hdr_block_index += 1;
@@ -348,18 +362,15 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
         // We only update the block index for types that have a payload.
         // In directory entries, for example, the size field has other
         // semantics. See spec.
-        if let Ok(typeflag) = hdr.typeflag.try_to_type_flag() {
-            if typeflag.has_payload() {
-                let payload_block_count = hdr
-                    .payload_block_count()
-                    .inspect_err(|e| {
-                        if !hdr.is_zero_block() {
-                            log::error!("Unparsable size ({e:?}) in header {hdr:#?}");
-                        }
-                    })
-                    .ok()?;
-                self.next_hdr_block_index += payload_block_count;
-            }
+        let typeflag = hdr
+            .typeflag
+            .try_to_type_flag()
+            .expect("type flag should be valid after successful validation");
+        if typeflag.has_payload() {
+            let payload_block_count = hdr
+                .payload_block_count()
+                .expect("payload size should be valid after successful validation");
+            self.next_hdr_block_index += payload_block_count;
         }
 
         Some((block_index, hdr))
@@ -400,8 +411,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
         while !hdr
             .typeflag
             .try_to_type_flag()
-            .inspect_err(|e| error!("Invalid TypeFlag: {e:?}"))
-            .ok()?
+            .expect("type flag should be valid after successful validation")
             .is_regular_file()
         {
             warn!(
@@ -413,35 +423,14 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
             (block_index, hdr) = self.next_hdr()?;
         }
 
-        // check if we found end of archive (two zero blocks)
-        if hdr.is_zero_block() {
-            if self.next_hdr()?.1.is_zero_block() {
-                // found end
-                return None;
-            }
-
-            panic!("should never have a missing double zero block: is the Tar archive corrupt?");
-        }
-
         let payload_size: usize = hdr
             .size
             .as_number()
-            .inspect_err(|e| error!("Can't parse the file size from the header. {e:#?}"))
-            .ok()?;
+            .expect("payload size should be valid after successful validation");
 
         let idx_first_data_block = block_index + 1;
         let idx_begin = idx_first_data_block * BLOCKSIZE;
         let idx_end_exclusive = idx_begin + payload_size;
-
-        // This doesn't subtract with overflow as we ensured a minimum size in
-        // the constructor.
-        let max_data_end_index_exclusive = self.0.archive_data.len() - 2 * BLOCKSIZE;
-        if idx_end_exclusive > max_data_end_index_exclusive {
-            warn!(
-                "Invalid Tar. The size of the payload ({payload_size}) is larger than what is valid"
-            );
-            return None;
-        }
 
         let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
@@ -488,7 +477,9 @@ mod tests {
     #[test]
     fn test_header_iterator() {
         let archive = include_bytes!("../tests/gnu_tar_default.tar");
-        let iter = ArchiveHeaderIterator::new(archive);
+        let iter = TarArchiveRef::new(archive)
+            .expect("test archive should pass validation")
+            .headers();
         let names = iter
             .map(|(_i, hdr)| hdr.name.as_str().unwrap())
             .collect::<Vec<_>>();
@@ -508,7 +499,9 @@ mod tests {
     fn test_print_archive_headers() {
         let data = include_bytes!("../tests/gnu_tar_default.tar");
 
-        let iter = ArchiveHeaderIterator::new(data);
+        let iter = TarArchiveRef::new(data)
+            .expect("test archive should pass validation")
+            .headers();
         let entries = iter.map(|(_, hdr)| hdr).collect::<Vec<_>>();
         println!("{entries:#?}");
     }

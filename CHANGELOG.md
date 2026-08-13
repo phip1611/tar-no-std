@@ -1,5 +1,8 @@
 # Unreleased
 
+- `ArchiveHeaderIterator::new` is now private. Use `TarArchive::headers` or
+  `TarArchiveRef::headers` to iterate over validated archive headers.
+
 # v0.5.0 (2026-08-13)
 
 - Removed the incorrect `ExactSizeIterator` implementation for
