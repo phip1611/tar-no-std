@@ -19,3 +19,10 @@ path = "fuzz_targets/parse_archive.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_valid_archive"
+path = "fuzz_targets/parse_valid_archive.rs"
+test = false
+doc = false
+bench = false

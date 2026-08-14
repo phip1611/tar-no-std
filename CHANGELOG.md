@@ -1,6 +1,7 @@
 # Unreleased
 
 - Added cargo-fuzz infrastructure for archive parsing.
+- Added structure-aware fuzzing of checksum-valid Tar archives.
 
 # v0.5.0 (2026-08-13)
 
