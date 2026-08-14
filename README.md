@@ -65,3 +65,17 @@ Tar archive format from the uncompressed bytes.
 ## MSRV
 
 The MSRV is 1.85.0 stable.
+
+## Fuzzing
+
+The `parse_archive` fuzz target validates arbitrary input and exercises the
+public header and entry iterators for valid archives. To use the existing test
+archives as seeds, run:
+
+```shell
+mkdir -p fuzz/corpus/parse_archive
+cargo +nightly fuzz run parse_archive fuzz/corpus/parse_archive tests
+```
+
+Generated corpus entries, artifacts, coverage data, and build output below
+`fuzz/` are ignored by Git. cargo-fuzz requires a nightly Rust toolchain.
