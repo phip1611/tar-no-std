@@ -170,7 +170,12 @@ fn write_octal(field: &mut [u8], value: u64, encoding: OctalEncoding) {
     };
     let digits = field.len() - suffix;
 
+    // Checksum is a sum of 512 bytes each 0..=255, so max value is
+    // 512*255 = 130_560 = 0o377_000 (6 octal digits) - fits in the checksum
+    // field's tightest encoding (6 digits + 2-byte suffix). Re-derive this
+    // if the checksum formula changes.
     assert!(value.len() <= digits);
+
     field[..digits].fill(b'0');
     field[digits - value.len()..digits].copy_from_slice(value.as_bytes());
     match encoding {
