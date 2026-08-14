@@ -37,6 +37,45 @@ jobs:
       - name: Run tests
         run: cargo test --verbose --features alloc
 
+  fuzz:
+    runs-on: ubuntu-latest
+    needs:
+      # Logical dependency
+      - build
+    strategy:
+      matrix:
+        rust:
+          - nightly
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "${{ matrix.rust }}"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            fuzz -> target
+      - run: cargo install cargo-fuzz
+      - name: Build fuzz targets
+        run: cargo fuzz build
+      - name: Fuzz all targets
+        run: |
+          # Target 1: We use existing tarballs as base line corpus.
+          mkdir -p fuzz/corpus/parse_archive
+          cargo fuzz run parse_archive fuzz/corpus/parse_archive tests -- -max_total_time=30
+
+          # Target 2: Generates valid tarballs (initial header and checksom
+          # are correct) dynamically.
+          cargo +nightly fuzz run parse_valid_archive -- -max_total_time=30
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+
   miri:
     runs-on: "${{ matrix.runs-on }}"
     needs:
