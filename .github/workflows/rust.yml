@@ -71,7 +71,7 @@ jobs:
           cargo +nightly fuzz run parse_valid_archive -- -max_total_time=30
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}/
