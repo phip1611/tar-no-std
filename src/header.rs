@@ -30,7 +30,7 @@ SOFTWARE.
 
 #![allow(non_upper_case_globals)]
 
-use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatDecimal, TarFormatOctal, TarFormatString};
+use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatOctal, TarFormatString};
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
@@ -256,7 +256,7 @@ pub struct PosixHeader {
     pub gid: TarFormatOctal<8>,
     // confusing; size is stored as ASCII string
     pub size: TarFormatOctal<12>,
-    pub mtime: TarFormatDecimal<12>,
+    pub mtime: TarFormatOctal<12>,
     pub cksum: TarFormatOctal<8>,
     pub typeflag: TypeFlagRaw,
     /// Name. There is always a null byte, therefore
@@ -446,6 +446,12 @@ mod tests {
             let archive = bytes_to_archive(archive_data);
             assert_eq!(archive.typeflag.try_to_type_flag(), Ok(TypeFlag::XHDTYPE));
         }
+    }
+
+    #[test]
+    fn test_mtime_is_octal() {
+        let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
+        assert_eq!(archive.mtime.as_number::<u64>(), Ok(1_633_330_466));
     }
 
     #[test]
