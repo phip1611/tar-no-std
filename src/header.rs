@@ -30,7 +30,9 @@ SOFTWARE.
 
 #![allow(non_upper_case_globals)]
 
-use crate::{BLOCKSIZE, NAME_LEN, PREFIX_LEN, TarFormatOctal, TarFormatString};
+use crate::{
+    BLOCKSIZE, NAME_LEN, POSIX_1003_MAX_FILENAME_LEN, PREFIX_LEN, TarFormatOctal, TarFormatString,
+};
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
@@ -287,6 +289,41 @@ impl PosixHeader {
     pub fn payload_block_count(&self) -> Result<usize, ParseIntError> {
         let parsed_size = self.size.as_number::<usize>()?;
         Ok(parsed_size.div_ceil(BLOCKSIZE))
+    }
+
+    /// Parse the memory at the given block of `data` as [`PosixHeader`].
+    pub(crate) const fn from_block(data: &[u8], block_index: usize) -> &Self {
+        let blocks = data.len() / BLOCKSIZE;
+        assert!(block_index < blocks);
+
+        let ptr = data
+            .as_ptr()
+            .wrapping_add(block_index * BLOCKSIZE)
+            .cast::<Self>();
+        // SAFETY: We asserted that the block is in bound and the memory is
+        // valid.
+        unsafe { ptr.as_ref().unwrap() }
+    }
+
+    /// Returns the filename of the entry, including the ustar prefix if there
+    /// is one.
+    pub(crate) fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
+        let mut filename =
+            TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
+
+        // POXIS_1003 long filename check
+        // https://docs.scinet.utoronto.ca/index.php/(POSIX_1003.1_USTAR)
+        if (
+            self.magic.as_str(),
+            self.version.as_str(),
+            self.prefix.is_empty(),
+        ) == (Ok("ustar"), Ok("00"), false)
+        {
+            filename.append(&self.prefix);
+            filename.append(&TarFormatString::<1>::new(*b"/"));
+        }
+        filename.append(&self.name);
+        filename
     }
 
     pub(crate) fn has_valid_checksum(&self) -> bool {
