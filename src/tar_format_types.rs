@@ -1,10 +1,8 @@
 //! Conversion between Tar encoded strings and corresponding Rust types.
 
 use core::fmt::{Debug, Formatter};
-use core::num::ParseIntError;
 use core::ptr::copy_nonoverlapping;
 use core::str::{Utf8Error, from_utf8};
-use num_traits::Num;
 
 /// Base type for strings embedded in a Tar header. The length depends on the
 /// context. The returned string is likely to be UTF-8/ASCII, which is verified
@@ -234,7 +232,6 @@ mod tar_format_string_tests {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     fn test_append() {
         let mut s = TarFormatString::new([0; 20]);
 
@@ -286,7 +283,7 @@ mod tar_format_string_tests {
 
 #[cfg(test)]
 mod tar_format_number_tests {
-    use crate::{TarFormatDecimal, TarFormatNumber, TarFormatString};
+    use super::*;
 
     #[test]
     fn test_as_number_with_space_in_string() {

@@ -120,7 +120,6 @@ impl Debug for TypeFlagRaw {
 /// described inside the header.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-#[allow(unused)]
 pub enum TypeFlag {
     /// Represents a regular file. In order to be compatible with older versions of tar, a typeflag
     /// value of AREGTYPE should be silently recognized as a regular file. New archives should be

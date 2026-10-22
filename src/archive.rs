@@ -47,7 +47,6 @@ pub struct ArchiveEntry<'a> {
     posix_header: &'a PosixHeader,
 }
 
-#[allow(unused)]
 impl<'a> ArchiveEntry<'a> {
     const fn new(
         filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
@@ -79,8 +78,7 @@ impl<'a> ArchiveEntry<'a> {
     ///
     /// # Errors
     /// Returns a [`Utf8Error`] error for invalid strings.
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
+    pub const fn data_as_str(&self) -> Result<&'a str, Utf8Error> {
         core::str::from_utf8(self.data)
     }
 
@@ -233,7 +231,8 @@ impl TarArchive {
 }
 
 #[cfg(feature = "alloc")]
-#[allow(clippy::fallible_impl_from)]
+// TODO impl TryFrom
+#[expect(clippy::fallible_impl_from)]
 impl From<Box<[u8]>> for TarArchive {
     fn from(data: Box<[u8]>) -> Self {
         Self::new(data).unwrap()
@@ -254,7 +253,6 @@ pub struct TarArchiveRef<'a> {
     data: &'a [u8],
 }
 
-#[allow(unused)]
 impl<'a> TarArchiveRef<'a> {
     /// Creates a borrowed wrapper around validated Tar archive bytes.
     ///
@@ -853,7 +851,7 @@ mod tests {
             | ModeFlags::GroupWrite
             | ModeFlags::OthersRead;
         // Rust complains otherwise, but this is intentionally written this way.
-        #[allow(non_snake_case)]
+        #[expect(non_snake_case)]
         let rw_r__r__ = ModeFlags::OwnerRead
             | ModeFlags::OwnerWrite
             | ModeFlags::GroupRead
