@@ -5,6 +5,8 @@
 - `PosixHeader::mtime` is now a `TarFormatOctal<12>` instead of a
   `TarFormatDecimal<12>`. The field is octal in the Tar format, so it was
   previously parsed to a wrong value.
+- Added `TarStreamParser` to read archives block by block without holding
+  them in memory.
 
 # v0.5.0 (2026-08-13)
 
