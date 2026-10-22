@@ -2,6 +2,9 @@
 
 - Added cargo-fuzz infrastructure for archive parsing.
 - Added structure-aware fuzzing of checksum-valid Tar archives.
+- `PosixHeader::mtime` is now a `TarFormatOctal<12>` instead of a
+  `TarFormatDecimal<12>`. The field is octal in the Tar format, so it was
+  previously parsed to a wrong value.
 
 # v0.5.0 (2026-08-13)
 
