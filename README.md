@@ -50,6 +50,32 @@ fn main() {
 }
 ```
 
+## Streaming
+
+Archives that do not fit into memory can be read block by block with
+`TarStreamParser`. It keeps only a few words of state, validates every header
+like `TarArchiveRef::new` does, and, like `TarArchiveRef::entries`, only
+reports regular files. Payload bytes are passed through as slices of the
+caller's blocks, so nothing is copied.
+
+```rust
+use tar_no_std::{StreamEvent, TarStreamParser};
+
+let archive = include_bytes!("../tests/gnu_tar_default.tar");
+let mut parser = TarStreamParser::new();
+for block in archive.chunks_exact(512) {
+    match parser.parse_block(block.try_into().unwrap()).unwrap() {
+        Some(StreamEvent::Entry(entry)) => println!("{:?}", entry.filename()),
+        Some(StreamEvent::Data { bytes, remaining }) => {
+            println!("{} bytes, {remaining} remaining", bytes.len())
+        }
+        Some(StreamEvent::End) => break,
+        None => {}
+    }
+}
+parser.finish().unwrap();
+```
+
 ## Cargo Features
 
 This crate allows the usage of the additional Cargo build time feature `alloc`.
