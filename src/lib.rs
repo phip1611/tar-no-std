@@ -92,6 +92,7 @@ SOFTWARE.
     clippy::all,
     clippy::cargo,
     clippy::nursery,
+    clippy::absolute_paths,
     clippy::must_use_candidate,
     clippy::undocumented_unsafe_blocks
 )]

@@ -36,6 +36,7 @@ use crate::{
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
+use core::{error, fmt, slice};
 
 const CKSUM_OFFSET: usize = 148;
 const CKSUM_LEN: usize = 8;
@@ -48,7 +49,7 @@ pub enum ModeError {
 }
 
 impl Display for ModeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
     }
 }
@@ -79,7 +80,7 @@ impl Mode {
 }
 
 impl Debug for Mode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.to_flags(), f)
     }
 }
@@ -88,12 +89,12 @@ impl Debug for Mode {
 pub struct InvalidTypeFlagError(u8);
 
 impl Display for InvalidTypeFlagError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{:x} is not a valid TypeFlag", self.0))
     }
 }
 
-impl core::error::Error for InvalidTypeFlagError {}
+impl error::Error for InvalidTypeFlagError {}
 
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
 pub struct TypeFlagRaw(u8);
@@ -110,7 +111,7 @@ impl TypeFlagRaw {
 }
 
 impl Debug for TypeFlagRaw {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.try_to_type_flag(), f)
     }
 }
@@ -120,7 +121,6 @@ impl Debug for TypeFlagRaw {
 /// described inside the header.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-#[allow(unused)]
 pub enum TypeFlag {
     /// Represents a regular file. In order to be compatible with older versions of tar, a typeflag
     /// value of AREGTYPE should be silently recognized as a regular file. New archives should be
@@ -333,11 +333,11 @@ impl PosixHeader {
     }
 
     pub(crate) fn computed_checksum(&self) -> u64 {
-        let ptr = core::ptr::addr_of!(*self);
+        let ptr = &raw const *self;
         let ptr = ptr.cast::<u8>();
 
         // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
-        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+        let self_bytes = unsafe { slice::from_raw_parts(ptr, BLOCKSIZE) };
 
         self_bytes
             .iter()
@@ -356,11 +356,11 @@ impl PosixHeader {
     /// of two 512 blocks of zero bytes, is found.
     #[must_use]
     pub fn is_zero_block(&self) -> bool {
-        let ptr = core::ptr::addr_of!(*self);
+        let ptr = &raw const *self;
         let ptr = ptr.cast::<u8>();
 
         // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
-        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+        let self_bytes = unsafe { slice::from_raw_parts(ptr, BLOCKSIZE) };
         self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }
 }

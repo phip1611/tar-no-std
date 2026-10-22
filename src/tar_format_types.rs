@@ -1,10 +1,9 @@
-#![allow(unused_imports)]
+//! Conversion between Tar encoded strings and corresponding Rust types.
 
+use core::fmt;
 use core::fmt::{Debug, Formatter};
-use core::num::ParseIntError;
 use core::ptr::copy_nonoverlapping;
 use core::str::{Utf8Error, from_utf8};
-use num_traits::Num;
 
 /// Base type for strings embedded in a Tar header. The length depends on the
 /// context. The returned string is likely to be UTF-8/ASCII, which is verified
@@ -93,7 +92,7 @@ impl<const N: usize> TarFormatString<N> {
 }
 
 impl<const N: usize> Debug for TarFormatString<N> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let sub_array = &self.bytes[0..self.size()];
         write!(
             f,
@@ -123,11 +122,6 @@ impl<const N: usize> TarFormatOctal<N> {
     }
 }
 
-/// A decimal number. Trailing spaces in the string are ignored.
-#[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(C)]
-pub struct TarFormatDecimal<const N: usize>(TarFormatNumber<N, 10>);
-
 impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     #[cfg(test)]
     const fn new(bytes: [u8; N]) -> Self {
@@ -141,7 +135,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     ///
     /// Returns an error if the underlying value cannot be parsed as a number
     /// of the specified type and respective radix.
-    pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
+    pub fn as_number<T>(&self) -> Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
     {
@@ -157,7 +151,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
 }
 
 impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let sub_array = &self.0.bytes[0..self.0.size()];
         match self.as_number::<u64>() {
             Err(msg) => write!(f, "{} [{:?}]", msg, from_utf8(sub_array)),
@@ -168,36 +162,8 @@ impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
 }
 
 impl<const N: usize> Debug for TarFormatOctal<N> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-impl<const N: usize> Debug for TarFormatDecimal<N> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<const N: usize> TarFormatDecimal<N> {
-    /// Interprets the underlying value as a number of the specified type using
-    /// its respective radix.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying value cannot be parsed as a number
-    /// of the specified type and respective radix.
-    pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
-    where
-        T: num_traits::Num,
-    {
-        self.0.as_number::<T>()
-    }
-
-    /// Returns the underlying [`TarFormatString`].
-    #[must_use]
-    pub const fn as_inner(&self) -> &TarFormatString<N> {
-        self.0.as_inner()
     }
 }
 
@@ -209,7 +175,7 @@ impl<const N: usize> TarFormatOctal<N> {
     ///
     /// Returns an error if the underlying value cannot be parsed as a number
     /// of the specified type and respective radix.
-    pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
+    pub fn as_number<T>(&self) -> Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
     {
@@ -267,7 +233,6 @@ mod tar_format_string_tests {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     fn test_append() {
         let mut s = TarFormatString::new([0; 20]);
 
@@ -319,7 +284,7 @@ mod tar_format_string_tests {
 
 #[cfg(test)]
 mod tar_format_number_tests {
-    use crate::{TarFormatDecimal, TarFormatNumber, TarFormatString};
+    use super::*;
 
     #[test]
     fn test_as_number_with_space_in_string() {
