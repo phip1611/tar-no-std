@@ -392,17 +392,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
 
     /// Parse the memory at the given block as [`PosixHeader`].
     const fn block_as_header(&self, block_index: usize) -> &'a PosixHeader {
-        let blocks = self.archive_data.len() / BLOCKSIZE;
-        assert!(block_index < blocks);
-
-        let ptr = self
-            .archive_data
-            .as_ptr()
-            .wrapping_add(block_index * BLOCKSIZE)
-            .cast::<PosixHeader>();
-        // SAFETY: We asserted that the block is in bound and the memory is
-        // valid.
-        unsafe { ptr.as_ref().unwrap() }
+        PosixHeader::from_block(self.archive_data, block_index)
     }
 }
 
@@ -505,22 +495,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
 
-        let mut filename =
-            TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
-
-        // POXIS_1003 long filename check
-        // https://docs.scinet.utoronto.ca/index.php/(POSIX_1003.1_USTAR)
-        if (
-            hdr.magic.as_str(),
-            hdr.version.as_str(),
-            hdr.prefix.is_empty(),
-        ) == (Ok("ustar"), Ok("00"), false)
-        {
-            filename.append(&hdr.prefix);
-            filename.append(&TarFormatString::<1>::new(*b"/"));
-        }
-        filename.append(&hdr.name);
-        Some(ArchiveEntry::new(filename, file_bytes, hdr))
+        Some(ArchiveEntry::new(hdr.filename(), file_bytes, hdr))
     }
 }
 
