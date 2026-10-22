@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Conversion between Tar encoded strings and corresponding Rust types.
 
 use core::fmt;

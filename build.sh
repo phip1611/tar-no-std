@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 
 cargo build --all-targets --verbose --features alloc
 # use some random no_std target

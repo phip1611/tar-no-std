@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 [package]
 name = "tar-no-std-fuzz"
 version = "0.0.0"

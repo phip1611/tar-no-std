@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #![no_main]
 
 use core::hint::black_box;
