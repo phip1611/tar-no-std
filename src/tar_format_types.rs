@@ -1,4 +1,4 @@
-#![allow(unused_imports)]
+//! Conversion between Tar encoded strings and corresponding Rust types.
 
 use core::fmt::{Debug, Formatter};
 use core::num::ParseIntError;
