@@ -123,11 +123,6 @@ impl<const N: usize> TarFormatOctal<N> {
     }
 }
 
-/// A decimal number. Trailing spaces in the string are ignored.
-#[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(C)]
-pub struct TarFormatDecimal<const N: usize>(TarFormatNumber<N, 10>);
-
 impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     #[cfg(test)]
     const fn new(bytes: [u8; N]) -> Self {
@@ -170,34 +165,6 @@ impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
 impl<const N: usize> Debug for TarFormatOctal<N> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-impl<const N: usize> Debug for TarFormatDecimal<N> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<const N: usize> TarFormatDecimal<N> {
-    /// Interprets the underlying value as a number of the specified type using
-    /// its respective radix.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying value cannot be parsed as a number
-    /// of the specified type and respective radix.
-    pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
-    where
-        T: num_traits::Num,
-    {
-        self.0.as_number::<T>()
-    }
-
-    /// Returns the underlying [`TarFormatString`].
-    #[must_use]
-    pub const fn as_inner(&self) -> &TarFormatString<N> {
-        self.0.as_inner()
     }
 }
 
