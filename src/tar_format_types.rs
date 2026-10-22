@@ -1,5 +1,6 @@
 //! Conversion between Tar encoded strings and corresponding Rust types.
 
+use core::fmt;
 use core::fmt::{Debug, Formatter};
 use core::ptr::copy_nonoverlapping;
 use core::str::{Utf8Error, from_utf8};
@@ -91,7 +92,7 @@ impl<const N: usize> TarFormatString<N> {
 }
 
 impl<const N: usize> Debug for TarFormatString<N> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let sub_array = &self.bytes[0..self.size()];
         write!(
             f,
@@ -134,7 +135,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     ///
     /// Returns an error if the underlying value cannot be parsed as a number
     /// of the specified type and respective radix.
-    pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
+    pub fn as_number<T>(&self) -> Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
     {
@@ -150,7 +151,7 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
 }
 
 impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let sub_array = &self.0.bytes[0..self.0.size()];
         match self.as_number::<u64>() {
             Err(msg) => write!(f, "{} [{:?}]", msg, from_utf8(sub_array)),
@@ -161,7 +162,7 @@ impl<const N: usize, const R: u32> Debug for TarFormatNumber<N, R> {
 }
 
 impl<const N: usize> Debug for TarFormatOctal<N> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
 }
@@ -174,7 +175,7 @@ impl<const N: usize> TarFormatOctal<N> {
     ///
     /// Returns an error if the underlying value cannot be parsed as a number
     /// of the specified type and respective radix.
-    pub fn as_number<T>(&self) -> core::result::Result<T, T::FromStrRadixErr>
+    pub fn as_number<T>(&self) -> Result<T, T::FromStrRadixErr>
     where
         T: num_traits::Num,
     {

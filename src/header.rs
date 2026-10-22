@@ -36,6 +36,7 @@ use crate::{
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
+use core::{error, fmt, slice};
 
 const CKSUM_OFFSET: usize = 148;
 const CKSUM_LEN: usize = 8;
@@ -48,7 +49,7 @@ pub enum ModeError {
 }
 
 impl Display for ModeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
     }
 }
@@ -79,7 +80,7 @@ impl Mode {
 }
 
 impl Debug for Mode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.to_flags(), f)
     }
 }
@@ -88,12 +89,12 @@ impl Debug for Mode {
 pub struct InvalidTypeFlagError(u8);
 
 impl Display for InvalidTypeFlagError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{:x} is not a valid TypeFlag", self.0))
     }
 }
 
-impl core::error::Error for InvalidTypeFlagError {}
+impl error::Error for InvalidTypeFlagError {}
 
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
 pub struct TypeFlagRaw(u8);
@@ -110,7 +111,7 @@ impl TypeFlagRaw {
 }
 
 impl Debug for TypeFlagRaw {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.try_to_type_flag(), f)
     }
 }
@@ -336,7 +337,7 @@ impl PosixHeader {
         let ptr = ptr.cast::<u8>();
 
         // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
-        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+        let self_bytes = unsafe { slice::from_raw_parts(ptr, BLOCKSIZE) };
 
         self_bytes
             .iter()
@@ -359,7 +360,7 @@ impl PosixHeader {
         let ptr = ptr.cast::<u8>();
 
         // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
-        let self_bytes = unsafe { core::slice::from_raw_parts(ptr, BLOCKSIZE) };
+        let self_bytes = unsafe { slice::from_raw_parts(ptr, BLOCKSIZE) };
         self_bytes.iter().filter(|x| **x == 0).count() == BLOCKSIZE
     }
 }
