@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 name: Build
 
 on: [ push, pull_request, merge_group ]

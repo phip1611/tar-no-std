@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 use core::hint::black_box;
 
 use tar_no_std::TarArchiveRef;

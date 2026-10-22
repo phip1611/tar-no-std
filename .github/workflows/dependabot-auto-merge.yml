@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 # We auto-merge all dependabot updates as soon as the CI are met.
 #
 # More info: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions
