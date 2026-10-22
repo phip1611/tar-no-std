@@ -332,7 +332,7 @@ impl PosixHeader {
     }
 
     pub(crate) fn computed_checksum(&self) -> u64 {
-        let ptr = core::ptr::addr_of!(*self);
+        let ptr = &raw const *self;
         let ptr = ptr.cast::<u8>();
 
         // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
@@ -355,7 +355,7 @@ impl PosixHeader {
     /// of two 512 blocks of zero bytes, is found.
     #[must_use]
     pub fn is_zero_block(&self) -> bool {
-        let ptr = core::ptr::addr_of!(*self);
+        let ptr = &raw const *self;
         let ptr = ptr.cast::<u8>();
 
         // SAFETY: we know that the data is at least BLOCKSIZE bytes long.
