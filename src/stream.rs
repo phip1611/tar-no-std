@@ -238,11 +238,128 @@ fn parse_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TarArchiveRef;
+    use std::string::{String, ToString};
     use std::vec::Vec;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ParsedEntry {
+        block_index: usize,
+        filename: String,
+        data: Vec<u8>,
+    }
 
     fn blocks(data: &[u8]) -> impl Iterator<Item = &[u8; BLOCKSIZE]> {
         data.chunks_exact(BLOCKSIZE)
             .map(|block| block.try_into().unwrap())
+    }
+
+    fn parse(data: &[u8]) -> Result<Vec<ParsedEntry>, CorruptDataError> {
+        let mut parser = TarStreamParser::new();
+        let mut entries: Vec<ParsedEntry> = Vec::new();
+        for block in blocks(data) {
+            match parser.parse_block(block)? {
+                Some(StreamEvent::Entry(entry)) => {
+                    assert!(entry.type_flag().is_regular_file());
+                    assert_eq!(
+                        entry.posix_header().typeflag.try_to_type_flag(),
+                        Ok(entry.type_flag())
+                    );
+                    entries.push(ParsedEntry {
+                        block_index: entry.block_index(),
+                        filename: entry.filename().as_str().unwrap().to_string(),
+                        data: Vec::with_capacity(entry.payload_size()),
+                    });
+                }
+                Some(StreamEvent::Data { bytes, .. }) => {
+                    entries.last_mut().unwrap().data.extend_from_slice(bytes);
+                }
+                Some(StreamEvent::End) => break,
+                None => {}
+            }
+        }
+        Ok(entries)
+    }
+
+    fn parse_files(data: &[u8]) -> Vec<(String, Vec<u8>)> {
+        parse(data)
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.filename, entry.data))
+            .collect()
+    }
+
+    fn archive_entries(data: &[u8]) -> Vec<(String, Vec<u8>)> {
+        TarArchiveRef::new(data)
+            .unwrap()
+            .entries()
+            .map(|entry| {
+                (
+                    entry.filename().as_str().unwrap().to_string(),
+                    entry.data().to_vec(),
+                )
+            })
+            .collect()
+    }
+
+    fn header_block(data: &[u8]) -> [u8; BLOCKSIZE] {
+        data[..BLOCKSIZE].try_into().unwrap()
+    }
+
+    fn write_checksum(block: &mut [u8; BLOCKSIZE]) {
+        block[148..156].fill(b' ');
+        let sum: u32 = block.iter().map(|&b| u32::from(b)).sum();
+        let checksum = format!("{sum:06o}\0 ");
+        block[148..156].copy_from_slice(checksum.as_bytes());
+    }
+
+    #[test]
+    fn test_stream_matches_archive_entries() {
+        for data in [
+            include_bytes!("../tests/gnu_tar_default.tar") as &[u8],
+            include_bytes!("../tests/gnu_tar_default_with_dir.tar"),
+            include_bytes!("../tests/gnu_tar_gnu.tar"),
+            include_bytes!("../tests/gnu_tar_oldgnu.tar"),
+            include_bytes!("../tests/gnu_tar_pax.tar"),
+            include_bytes!("../tests/gnu_tar_posix.tar"),
+            include_bytes!("../tests/gnu_tar_ustar.tar"),
+            include_bytes!("../tests/gnu_tar_ustar_deep.tar"),
+            include_bytes!("../tests/gnu_tar_ustar_long.tar"),
+            include_bytes!("../tests/gnu_tar_v7.tar"),
+            include_bytes!("../tests/mac_tar_ustar_with_dir.tar"),
+            include_bytes!("../tests/weird_fuzzing_tarballs.tar"),
+        ] {
+            assert_eq!(parse_files(data), archive_entries(data));
+        }
+    }
+
+    #[test]
+    fn test_stream_skips_directories() {
+        let entries = parse(include_bytes!("../tests/gnu_tar_default_with_dir.tar")).unwrap();
+        let summary = entries
+            .iter()
+            .map(|entry| (entry.block_index, entry.filename.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summary,
+            [
+                (1, "tests/hello_world.txt"),
+                (3, "tests/bye_world_513b.txt"),
+                (6, "tests/hello_world_513b.txt"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_stream_skips_pax_headers_with_payload() {
+        let data = include_bytes!("../tests/gnu_tar_pax.tar");
+        let first_header = PosixHeader::from_block(data, 0);
+        assert_eq!(
+            first_header.typeflag.try_to_type_flag(),
+            Ok(TypeFlag::XHDTYPE)
+        );
+        let entries = parse(data).unwrap();
+        assert!(entries[0].block_index > 1);
     }
 
     #[test]
@@ -292,5 +409,42 @@ mod tests {
             .unwrap();
         assert!(end < events.len() - 1);
         assert!(events[end + 1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn test_empty_archive_is_valid() {
+        assert_eq!(parse(&[0; 2 * BLOCKSIZE]), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn test_rejects_invalid_checksum() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[0] ^= 0xff;
+        assert_eq!(
+            parse(&data),
+            Err(CorruptDataError::InvalidChecksum { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_rejects_invalid_type_flag() {
+        let mut block = header_block(include_bytes!("../tests/gnu_tar_default.tar"));
+        block[156] = b'?';
+        write_checksum(&mut block);
+        assert_eq!(
+            TarStreamParser::new().parse_block(&block).err(),
+            Some(CorruptDataError::InvalidTypeFlag { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_rejects_invalid_payload_size() {
+        let mut block = header_block(include_bytes!("../tests/gnu_tar_default.tar"));
+        block[124] = 0xff;
+        write_checksum(&mut block);
+        assert_eq!(
+            TarStreamParser::new().parse_block(&block).err(),
+            Some(CorruptDataError::InvalidPayloadSize { block_index: 0 })
+        );
     }
 }
