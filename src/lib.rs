@@ -97,9 +97,11 @@ const PREFIX_LEN: usize = 155;
 mod archive;
 mod header;
 mod stream;
+mod stream_reader;
 mod tar_format_types;
 
 pub use archive::*;
 pub use header::*;
 pub use stream::*;
+pub use stream_reader::*;
 pub use tar_format_types::*;
