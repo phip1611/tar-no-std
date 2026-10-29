@@ -50,6 +50,14 @@ fn main() {
 }
 ```
 
+## Streaming
+
+Archives that do not fit into memory can be read block by block with
+`TarStreamReader`, which pulls 512-byte blocks from a source such as a file, a
+flash device, or a network stream. See the
+[documentation on docs.rs](https://docs.rs/tar-no-std/latest/tar_no_std/struct.TarStreamReader.html)
+for details and an example.
+
 ## Cargo Features
 
 This crate allows the usage of the additional Cargo build time feature `alloc`.
