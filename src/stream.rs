@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 //! Module for [`TarStreamParser`], which parses a Tar archive one block at a
-//! time, without requiring the whole archive in memory.
+//! time, without requiring the whole archive in memory. It is the engine of
+//! [`TarStreamReader`].
+//!
+//! [`TarStreamReader`]: crate::TarStreamReader
 
 use crate::BLOCKSIZE;
 use crate::archive::CorruptDataError;
@@ -38,11 +41,17 @@ enum State {
     Header,
     /// The next block holds payload, of an entry that is skipped if `skip`
     /// is set.
-    Payload { remaining: usize, skip: bool },
+    Payload {
+        header_block_index: usize,
+        remaining: usize,
+        skip: bool,
+    },
     /// The next block must be the second zero block of the terminator.
     FirstZeroBlock,
     /// The terminator was read, so the next blocks are ignored.
     End,
+    /// A block was invalid, and its error is returned for every next block.
+    Failed(CorruptDataError),
 }
 
 /// Parses a Tar archive incrementally, one 512-byte block at a time.
@@ -55,6 +64,8 @@ enum State {
 /// Directories, links, PAX extended headers, and other special entries are
 /// validated and then skipped together with their payload. Blocks after the
 /// terminator are ignored.
+///
+/// Once an error was returned, the parser keeps returning the same error.
 ///
 /// [`TarArchiveRef::new`]: crate::TarArchiveRef::new
 /// [`ArchiveEntryIterator`]: crate::ArchiveEntryIterator
@@ -89,7 +100,11 @@ impl TarStreamParser {
     ) -> Result<Option<StreamEvent>, CorruptDataError> {
         let block_index = self.block_index;
         self.block_index = self.block_index.saturating_add(1);
-        self.next_event(block_index, block)
+        let event = self.next_event(block_index, block);
+        if let Err(error) = event {
+            self.state = State::Failed(error);
+        }
+        event
     }
 
     /// Parses `block` according to the current state and moves on to the
@@ -100,6 +115,7 @@ impl TarStreamParser {
         block: &[u8; BLOCKSIZE],
     ) -> Result<Option<StreamEvent>, CorruptDataError> {
         match self.state {
+            State::Failed(error) => Err(error),
             State::End => Ok(None),
             State::FirstZeroBlock => {
                 if PosixHeader::from_block(block, 0).is_zero_block() {
@@ -109,13 +125,21 @@ impl TarStreamParser {
                     Err(CorruptDataError::MissingTerminator)
                 }
             }
-            State::Payload { remaining, skip } => {
+            State::Payload {
+                header_block_index,
+                remaining,
+                skip,
+            } => {
                 let len = remaining.min(BLOCKSIZE);
                 let remaining = remaining - len;
                 self.state = if remaining == 0 {
                     State::Header
                 } else {
-                    State::Payload { remaining, skip }
+                    State::Payload {
+                        header_block_index,
+                        remaining,
+                        skip,
+                    }
                 };
                 if skip {
                     return Ok(None);
@@ -132,6 +156,7 @@ impl TarStreamParser {
                 let skip = !type_flag.is_regular_file();
                 if size > 0 {
                     self.state = State::Payload {
+                        header_block_index: block_index,
                         remaining: size,
                         skip,
                     };
@@ -145,6 +170,26 @@ impl TarStreamParser {
                 }
                 Ok(Some(StreamEvent::Entry { size }))
             }
+        }
+    }
+
+    /// Checks that the archive was complete once all blocks were parsed.
+    ///
+    /// # Errors
+    /// Returns [`CorruptDataError`] if no block was parsed, if the payload of
+    /// the last entry is incomplete, if the terminator is missing, or if a
+    /// previous block was invalid.
+    pub const fn finish(&self) -> Result<(), CorruptDataError> {
+        match self.state {
+            State::End => Ok(()),
+            State::Failed(error) => Err(error),
+            State::Payload {
+                header_block_index, ..
+            } => Err(CorruptDataError::PayloadExtendsBeyondArchive {
+                block_index: header_block_index,
+            }),
+            State::Header if self.block_index == 0 => Err(CorruptDataError::EmptyArchive),
+            State::Header | State::FirstZeroBlock => Err(CorruptDataError::MissingTerminator),
         }
     }
 }
@@ -213,6 +258,7 @@ mod tests {
                 None => {}
             }
         }
+        parser.finish()?;
         Ok(entries)
     }
 
@@ -338,6 +384,7 @@ mod tests {
             .unwrap();
         assert!(end < events.len() - 1);
         assert!(events[end + 1..].iter().all(Option::is_none));
+        assert_eq!(parser.finish(), Ok(()));
     }
 
     #[test]
@@ -375,5 +422,95 @@ mod tests {
             TarStreamParser::new().parse_block(&block),
             Err(CorruptDataError::InvalidPayloadSize { block_index: 0 })
         );
+    }
+
+    #[test]
+    fn test_rejects_truncated_payload() {
+        let data = include_bytes!("../tests/gnu_tar_default.tar");
+        let mut parser = TarStreamParser::new();
+        for block in blocks(&data[..2 * BLOCKSIZE]) {
+            parser.parse_block(block).unwrap();
+        }
+        assert_eq!(
+            parser.finish(),
+            Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_rejects_truncated_payload_of_skipped_entry() {
+        let data = include_bytes!("../tests/gnu_tar_pax.tar");
+        let mut parser = TarStreamParser::new();
+        assert_eq!(parser.parse_block(&header_block(data)), Ok(None));
+        assert_eq!(
+            parser.finish(),
+            Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_rejects_missing_terminator() {
+        let data = include_bytes!("../tests/gnu_tar_default.tar");
+        let end_of_entries = data.len() - 2 * BLOCKSIZE;
+        let end_of_entries = data[..end_of_entries]
+            .chunks_exact(BLOCKSIZE)
+            .rposition(|block| block.iter().any(|&b| b != 0))
+            .unwrap()
+            + 1;
+        assert_eq!(
+            parse_streaming(&data[..end_of_entries * BLOCKSIZE]),
+            Err(CorruptDataError::MissingTerminator)
+        );
+        assert_eq!(
+            parse_streaming(&[0; BLOCKSIZE]),
+            Err(CorruptDataError::MissingTerminator)
+        );
+    }
+
+    #[test]
+    fn test_rejects_single_zero_block_followed_by_data() {
+        let mut data = std::vec![0; BLOCKSIZE];
+        data.extend_from_slice(&header_block(include_bytes!(
+            "../tests/gnu_tar_default.tar"
+        )));
+        assert_eq!(
+            parse_streaming(&data),
+            Err(CorruptDataError::MissingTerminator)
+        );
+    }
+
+    #[test]
+    fn test_rejects_empty_input() {
+        assert_eq!(
+            TarStreamParser::new().finish(),
+            Err(CorruptDataError::EmptyArchive)
+        );
+    }
+
+    #[test]
+    fn test_errors_are_sticky() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[0] ^= 0xff;
+        let mut parser = TarStreamParser::new();
+        let error = CorruptDataError::InvalidChecksum { block_index: 0 };
+        assert_eq!(parser.parse_block(&header_block(&data)), Err(error));
+        assert_eq!(parser.parse_block(&[0; BLOCKSIZE]), Err(error));
+        assert_eq!(parser.parse_block(&[0; BLOCKSIZE]), Err(error));
+        assert_eq!(parser.finish(), Err(error));
+    }
+
+    #[test]
+    fn test_stream_rejects_weird_fuzzing_tarballs() {
+        let main_tarball =
+            TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar")).unwrap();
+        let mut checked = 0;
+        for fuzzing_input in main_tarball.entries() {
+            let data = fuzzing_input.data();
+            if data.len() % BLOCKSIZE == 0 {
+                assert!(parse_streaming(data).is_err());
+                checked += 1;
+            }
+        }
+        assert!(checked > 0);
     }
 }
