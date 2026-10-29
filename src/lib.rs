@@ -98,8 +98,10 @@ mod archive;
 mod header;
 #[cfg_attr(not(test), expect(dead_code, reason = "used by TarStreamReader"))]
 mod stream;
+mod stream_reader;
 mod tar_format_types;
 
 pub use archive::*;
 pub use header::*;
+pub use stream_reader::*;
 pub use tar_format_types::*;
