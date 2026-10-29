@@ -96,7 +96,6 @@ const PREFIX_LEN: usize = 155;
 
 mod archive;
 mod header;
-#[cfg_attr(not(test), expect(dead_code, reason = "used by TarStreamReader"))]
 mod stream;
 mod stream_reader;
 mod tar_format_types;
