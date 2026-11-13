@@ -11,20 +11,22 @@ use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
 use log::warn;
 
-/// Event returned by [`TarStreamParser::parse_block`].
+/// Event returned by [`TarStreamParser::parse_block`]. It borrows the block
+/// that was passed in.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum StreamEvent {
+pub enum StreamEvent<'a> {
     /// The block is the header of a regular file. If the file has a payload,
     /// the next blocks produce [`StreamEvent::Data`] events.
     Entry {
+        /// Header of the file.
+        header: &'a PosixHeader,
         /// Size of the file in bytes.
         size: usize,
     },
     /// The block holds payload bytes of the current file.
     Data {
-        /// Number of payload bytes at the start of the block. The rest of the
-        /// block is padding.
-        len: usize,
+        /// Payload bytes of the block, without the padding.
+        data: &'a [u8],
         /// Number of payload bytes of the current file in the following
         /// blocks. Zero for the last block of the file.
         remaining: usize,
@@ -94,10 +96,10 @@ impl TarStreamParser {
     ///
     /// # Errors
     /// Returns [`CorruptDataError`] if the block is invalid.
-    pub fn parse_block(
+    pub fn parse_block<'a>(
         &mut self,
-        block: &[u8; BLOCKSIZE],
-    ) -> Result<Option<StreamEvent>, CorruptDataError> {
+        block: &'a [u8; BLOCKSIZE],
+    ) -> Result<Option<StreamEvent<'a>>, CorruptDataError> {
         let block_index = self.block_index;
         self.block_index = self.block_index.saturating_add(1);
         let event = self.next_event(block_index, block);
@@ -109,11 +111,11 @@ impl TarStreamParser {
 
     /// Parses `block` according to the current state and moves on to the
     /// next state.
-    fn next_event(
+    fn next_event<'a>(
         &mut self,
         block_index: usize,
-        block: &[u8; BLOCKSIZE],
-    ) -> Result<Option<StreamEvent>, CorruptDataError> {
+        block: &'a [u8; BLOCKSIZE],
+    ) -> Result<Option<StreamEvent<'a>>, CorruptDataError> {
         match self.state {
             State::Failed(error) => Err(error),
             State::End => Ok(None),
@@ -144,7 +146,10 @@ impl TarStreamParser {
                 if skip {
                     return Ok(None);
                 }
-                Ok(Some(StreamEvent::Data { len, remaining }))
+                Ok(Some(StreamEvent::Data {
+                    data: &block[..len],
+                    remaining,
+                }))
             }
             State::Header => {
                 let hdr = PosixHeader::from_block(block, 0);
@@ -168,7 +173,7 @@ impl TarStreamParser {
                     );
                     return Ok(None);
                 }
-                Ok(Some(StreamEvent::Entry { size }))
+                Ok(Some(StreamEvent::Entry { header: hdr, size }))
             }
         }
     }
@@ -241,18 +246,22 @@ mod tests {
         let mut entries: Vec<ParsedEntry> = Vec::new();
         for (block_index, block) in blocks(data).enumerate() {
             match parser.parse_block(block)? {
-                Some(StreamEvent::Entry { size }) => {
-                    let hdr = PosixHeader::from_block(block, 0);
-                    assert!(hdr.typeflag.try_to_type_flag().unwrap().is_regular_file());
+                Some(StreamEvent::Entry { header, size }) => {
+                    assert!(
+                        header
+                            .typeflag
+                            .try_to_type_flag()
+                            .unwrap()
+                            .is_regular_file()
+                    );
                     entries.push(ParsedEntry {
                         block_index,
-                        filename: hdr.filename().as_str().unwrap().to_string(),
+                        filename: header.filename().as_str().unwrap().to_string(),
                         data: Vec::with_capacity(size),
                     });
                 }
-                Some(StreamEvent::Data { len, .. }) => {
-                    let data = &mut entries.last_mut().unwrap().data;
-                    data.extend_from_slice(&block[..len]);
+                Some(StreamEvent::Data { data, .. }) => {
+                    entries.last_mut().unwrap().data.extend_from_slice(data);
                 }
                 Some(StreamEvent::End) => break,
                 None => {}
@@ -345,28 +354,42 @@ mod tests {
     }
 
     #[test]
-    fn test_data_events_strip_padding() {
+    fn test_events_borrow_the_block() {
         let data = include_bytes!("../tests/gnu_tar_default.tar");
         let mut parser = TarStreamParser::new();
         let mut blocks = blocks(data);
-        let mut next_event = || parser.parse_block(blocks.next().unwrap());
 
-        assert_eq!(next_event(), Ok(Some(StreamEvent::Entry { size: 513 })));
+        let block = blocks.next().unwrap();
         assert_eq!(
-            next_event(),
+            parser.parse_block(block),
+            Ok(Some(StreamEvent::Entry {
+                header: PosixHeader::from_block(block, 0),
+                size: 513
+            }))
+        );
+        let block = blocks.next().unwrap();
+        assert_eq!(
+            parser.parse_block(block),
             Ok(Some(StreamEvent::Data {
-                len: 512,
+                data: &block[..],
                 remaining: 1
             }))
         );
+        // The padding of the last block is cut off.
+        let block = blocks.next().unwrap();
         assert_eq!(
-            next_event(),
+            parser.parse_block(block),
             Ok(Some(StreamEvent::Data {
-                len: 1,
+                data: &block[..1],
                 remaining: 0
             }))
         );
-        assert!(matches!(next_event(), Ok(Some(StreamEvent::Entry { .. }))));
+        let block = blocks.next().unwrap();
+        assert!(matches!(
+            parser.parse_block(block),
+            Ok(Some(StreamEvent::Entry { header, size: 513 }))
+                if header.filename().as_str() == Ok("hello_world_513b.txt")
+        ));
     }
 
     #[test]
