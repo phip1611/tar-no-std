@@ -16,6 +16,71 @@ use core::{error, fmt};
 ///
 /// It is implemented for closures with the same signature as
 /// [`BlockSource::read_block`].
+///
+/// # Examples
+///
+/// A type that implements the trait, here a mock of a flash device that holds
+/// the archive:
+///
+/// ```rust
+/// use tar_no_std::{BlockSource, TarStreamReader};
+///
+/// struct Flash {
+///     data: &'static [u8],
+///     offset: usize,
+/// }
+///
+/// #[derive(Debug)]
+/// struct PartialBlock;
+///
+/// impl BlockSource for Flash {
+///     type Error = PartialBlock;
+///
+///     fn read_block(&mut self, buf: &mut [u8; 512]) -> Result<bool, PartialBlock> {
+///         match self.data.get(self.offset..self.offset + 512) {
+///             Some(block) => {
+///                 buf.copy_from_slice(block);
+///                 self.offset += 512;
+///                 Ok(true)
+///             }
+///             None if self.offset == self.data.len() => Ok(false),
+///             None => Err(PartialBlock),
+///         }
+///     }
+/// }
+///
+/// let flash = Flash {
+///     data: include_bytes!("../tests/gnu_tar_default.tar"),
+///     offset: 0,
+/// };
+/// let mut reader = TarStreamReader::new(flash);
+/// let entry = reader.next_entry().unwrap().unwrap();
+/// assert_eq!(entry.filename().as_str(), Ok("bye_world_513b.txt"));
+/// assert_eq!(entry.size(), 513);
+/// ```
+///
+/// A closure, here one that reads from a [`std::io::Read`] implementation
+/// such as a file:
+///
+/// ```rust
+/// use std::io::{ErrorKind, Read};
+/// use tar_no_std::TarStreamReader;
+///
+/// let mut file: &[u8] = include_bytes!("../tests/gnu_tar_default.tar");
+/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| match file.read_exact(buf) {
+///     Ok(()) => Ok(true),
+///     Err(error) if error.kind() == ErrorKind::UnexpectedEof => Ok(false),
+///     Err(error) => Err(error),
+/// });
+///
+/// let mut count = 0;
+/// while let Some(_entry) = reader.next_entry().unwrap() {
+///     count += 1;
+/// }
+/// assert_eq!(count, 3);
+/// ```
+///
+/// [`std::io::Read`]: https://doc.rust-lang.org/std/io/trait.Read.html
 pub trait BlockSource {
     /// Error returned by the source.
     type Error;
