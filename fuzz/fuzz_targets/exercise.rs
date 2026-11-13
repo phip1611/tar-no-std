@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use core::convert::Infallible;
 use core::hint::black_box;
 
-use tar_no_std::TarArchiveRef;
+use tar_no_std::{MIN_BLOCK_COUNT, StreamError, TarArchiveRef, TarFormatString, TarStreamReader};
+
+const BLOCKSIZE: usize = 512;
+const FILENAME_LEN: usize = 256;
 
 pub fn archive(archive: &TarArchiveRef<'_>) {
     for (_, header) in archive.headers() {
@@ -40,4 +44,53 @@ pub fn archive(archive: &TarArchiveRef<'_>) {
         black_box(entry.size());
         black_box(entry.posix_header());
     }
+}
+
+pub fn stream(data: &[u8]) {
+    // Vary the buffer size to exercise partial payload reads.
+    let chunk_size = data.len() % 97 + 1;
+    let result = read_with_reader(data, chunk_size);
+
+    // Unlike the reader, TarArchiveRef also rejects inputs that are not made
+    // of whole blocks or that have less than MIN_BLOCK_COUNT blocks.
+    if data.len() % BLOCKSIZE != 0 || data.len() / BLOCKSIZE < MIN_BLOCK_COUNT {
+        return;
+    }
+    let expected = TarArchiveRef::new(data)
+        .map(|archive| {
+            archive
+                .entries()
+                .map(|entry| (entry.filename(), entry.data().to_vec()))
+                .collect::<Vec<_>>()
+        })
+        .map_err(StreamError::Corrupt);
+    assert_eq!(result, expected);
+}
+
+type Files = Vec<(TarFormatString<FILENAME_LEN>, Vec<u8>)>;
+
+fn read_with_reader(data: &[u8], chunk_size: usize) -> Result<Files, StreamError<Infallible>> {
+    let mut blocks = data.chunks_exact(BLOCKSIZE);
+    let mut reader = TarStreamReader::new(|buf: &mut [u8; BLOCKSIZE]| {
+        let Some(block) = blocks.next() else {
+            return Ok(false);
+        };
+        buf.copy_from_slice(block);
+        Ok(true)
+    });
+    let mut files = Vec::new();
+    let mut buf = vec![0; chunk_size];
+    while let Some(mut entry) = reader.next_entry()? {
+        let mut data = Vec::new();
+        loop {
+            let n = entry.read_payload(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            data.extend_from_slice(&buf[..n]);
+        }
+        assert_eq!(data.len(), entry.size());
+        files.push((entry.filename(), data));
+    }
+    Ok(files)
 }

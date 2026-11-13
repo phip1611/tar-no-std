@@ -50,6 +50,36 @@
 //! println!("{:#?}", entries);
 //! ```
 //!
+//! ## Streaming
+//!
+//! Archives that do not fit into memory can be read block by block with
+//! [`TarStreamReader`]. It pulls 512-byte blocks from a [`BlockSource`], which
+//! can be a closure or a type that reads from a file, a flash device, or a
+//! network stream. It validates every header like [`TarArchiveRef::new`] does
+//! and, like [`TarArchiveRef::entries`], only reports regular files. Payload
+//! that is not read is skipped.
+//!
+//! ```rust
+//! use tar_no_std::TarStreamReader;
+//!
+//! let archive = include_bytes!("../tests/gnu_tar_default.tar");
+//! let mut blocks = archive.chunks_exact(512);
+//! let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| {
+//!     let Some(block) = blocks.next() else {
+//!         return Ok::<_, ()>(false);
+//!     };
+//!     buf.copy_from_slice(block);
+//!     Ok(true)
+//! });
+//!
+//! let mut buf = [0; 64];
+//! while let Some(mut entry) = reader.next_entry().unwrap() {
+//!     println!("{:?} ({} bytes)", entry.filename(), entry.size());
+//!     let n = entry.read_payload(&mut buf).unwrap();
+//!     println!("starts with {:?}", &buf[..n]);
+//! }
+//! ```
+//!
 //! ## Cargo Features
 //!
 //! This crate allows the usage of the additional Cargo build time feature `alloc`.
@@ -96,8 +126,11 @@ const PREFIX_LEN: usize = 155;
 
 mod archive;
 mod header;
+mod stream;
+mod stream_reader;
 mod tar_format_types;
 
 pub use archive::*;
 pub use header::*;
+pub use stream_reader::*;
 pub use tar_format_types::*;

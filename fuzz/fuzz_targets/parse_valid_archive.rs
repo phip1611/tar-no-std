@@ -104,6 +104,7 @@ fuzz_target!(|data: &[u8]| {
     let archive = TarArchiveRef::new(&bytes)
         .expect("the structure-aware generator must produce a valid archive");
     exercise::archive(&archive);
+    exercise::stream(&bytes);
 });
 
 fn build_archive(data: &[u8]) -> Vec<u8> {
