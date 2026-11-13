@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Module for [`TarStreamParser`], which parses a Tar archive one block at a
-//! time, without requiring the whole archive in memory. It is the engine of
-//! [`TarStreamReader`].
+//! time, without requiring the whole archive in memory. It is also the engine
+//! of [`TarStreamReader`].
 //!
 //! [`TarStreamReader`]: crate::TarStreamReader
 
@@ -58,6 +58,11 @@ enum State {
 
 /// Parses a Tar archive incrementally, one 512-byte block at a time.
 ///
+/// Use it when the blocks are pushed to you, for example by an interrupt, a
+/// DMA callback, or the packet handler of a network stack, and you cannot wait
+/// for the next block. If you can, [`TarStreamReader`] is simpler: it pulls
+/// the blocks itself and takes care of the payload and the end of the archive.
+///
 /// The parser only keeps a few words of state. It validates each header like
 /// [`TarArchiveRef::new`] does: checksums, type flags, payload sizes, and the
 /// double-zero terminator.
@@ -68,7 +73,58 @@ enum State {
 /// terminator are ignored.
 ///
 /// Once an error was returned, the parser keeps returning the same error.
+/// Once the input ended, [`TarStreamParser::finish`] checks that the archive
+/// was complete.
 ///
+/// # Example
+///
+/// ```rust
+/// use tar_no_std::{CorruptDataError, StreamEvent, TarStreamParser};
+///
+/// /// Unpacks an archive whose blocks are delivered by a callback.
+/// struct Unpacker {
+///     parser: TarStreamParser,
+///     files: usize,
+/// }
+///
+/// impl Unpacker {
+///     /// Called for every 512-byte block of the archive, as it arrives.
+///     fn on_block(&mut self, block: &[u8; 512]) -> Result<(), CorruptDataError> {
+///         match self.parser.parse_block(block)? {
+///             Some(StreamEvent::Entry { header, size }) => {
+///                 // For example, create the file.
+///                 println!("{:?} ({size} bytes)", header.filename());
+///                 self.files += 1;
+///             }
+///             Some(StreamEvent::Data { data, remaining }) => {
+///                 // For example, write `data` to the file.
+///                 println!("  {} bytes, {remaining} left", data.len());
+///             }
+///             Some(StreamEvent::End) | None => {}
+///         }
+///         Ok(())
+///     }
+///
+///     /// Called once the input ended.
+///     fn on_end(&self) -> Result<(), CorruptDataError> {
+///         self.parser.finish()
+///     }
+/// }
+///
+/// let mut unpacker = Unpacker {
+///     parser: TarStreamParser::new(),
+///     files: 0,
+/// };
+/// // Stands in for the interrupt or network stack that delivers the blocks.
+/// let archive = include_bytes!("../tests/gnu_tar_default.tar");
+/// for block in archive.chunks_exact(512) {
+///     unpacker.on_block(block.try_into().unwrap()).unwrap();
+/// }
+/// unpacker.on_end().unwrap();
+/// assert_eq!(unpacker.files, 3);
+/// ```
+///
+/// [`TarStreamReader`]: crate::TarStreamReader
 /// [`TarArchiveRef::new`]: crate::TarArchiveRef::new
 /// [`ArchiveEntryIterator`]: crate::ArchiveEntryIterator
 #[derive(Debug, Default)]
@@ -81,6 +137,7 @@ pub struct TarStreamParser {
 
 impl TarStreamParser {
     /// Creates a parser positioned at the start of an archive.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             state: State::Header,

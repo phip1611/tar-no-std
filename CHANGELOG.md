@@ -8,6 +8,11 @@
 - Added `TarStreamReader` to read archives block by block from a
   `BlockSource` without holding them in memory. Its errors are reported as
   `StreamError`.
+- Added `TarStreamParser` for archives whose blocks are pushed to the caller,
+  for example by an interrupt or a network stack. It reports each block as a
+  `StreamEvent`.
+- `PosixHeader::filename` is now public. It returns the filename including the
+  ustar prefix, like `ArchiveEntry::filename`.
 
 # v0.5.0 (2026-08-13)
 

@@ -286,7 +286,8 @@ impl PosixHeader {
 
     /// Returns the filename of the entry, including the ustar prefix if there
     /// is one.
-    pub(crate) fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
+    #[must_use]
+    pub fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
         let mut filename =
             TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::new([0; POSIX_1003_MAX_FILENAME_LEN]);
 

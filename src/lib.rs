@@ -52,8 +52,11 @@
 //!
 //! ## Streaming
 //!
-//! Archives that do not fit into memory can be read block by block with
-//! [`TarStreamReader`]. It pulls 512-byte blocks from a [`BlockSource`], which
+//! Archives that do not fit into memory can be read block by block. We provide
+//! [`TarStreamReader`], which pulls the blocks itself, and [`TarStreamParser`],
+//! to which you pass the blocks one by one.
+//!
+//! [`TarStreamReader`] pulls 512-byte blocks from a [`BlockSource`], which
 //! can be a closure or a type that reads from a file, a flash device, or a
 //! network stream. It validates every header like [`TarArchiveRef::new`] does
 //! and, like [`TarArchiveRef::entries`], only reports regular files. Payload
@@ -78,6 +81,29 @@
 //!     let n = entry.read_payload(&mut buf).unwrap();
 //!     println!("starts with {:?}", &buf[..n]);
 //! }
+//! ```
+//!
+//! If the blocks are pushed to you instead, for example by an interrupt, a DMA
+//! callback, or a network stack, pass each block to [`TarStreamParser`] as it
+//! arrives. It validates the archive the same way and reports the header of
+//! each regular file, its payload bytes, and the end of the archive.
+//!
+//! ```rust
+//! use tar_no_std::{StreamEvent, TarStreamParser};
+//!
+//! let archive = include_bytes!("../tests/gnu_tar_default.tar");
+//! let mut parser = TarStreamParser::new();
+//! // Each block would be delivered by a callback.
+//! for block in archive.chunks_exact(512) {
+//!     match parser.parse_block(block.try_into().unwrap()).unwrap() {
+//!         Some(StreamEvent::Entry { header, size }) => {
+//!             println!("{:?} ({size} bytes)", header.filename());
+//!         }
+//!         Some(StreamEvent::Data { data, .. }) => println!("  {} bytes", data.len()),
+//!         Some(StreamEvent::End) | None => {}
+//!     }
+//! }
+//! parser.finish().unwrap();
 //! ```
 //!
 //! ## Cargo Features
@@ -132,5 +158,6 @@ mod tar_format_types;
 
 pub use archive::*;
 pub use header::*;
+pub use stream::*;
 pub use stream_reader::*;
 pub use tar_format_types::*;
