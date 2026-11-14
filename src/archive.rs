@@ -115,7 +115,8 @@ pub enum CorruptDataError {
         /// Index of the header with the invalid payload size.
         block_index: usize,
     },
-    /// A payload starting at `block_index` extends past the archive.
+    /// The payload described by the header at `block_index` extends past the
+    /// archive.
     PayloadExtendsBeyondArchive {
         /// Index of the header that describes the payload.
         block_index: usize,
