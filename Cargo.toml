@@ -2,7 +2,7 @@
 
 [package]
 name = "tar-no-std"
-description = "A no_std, allocation-free library focused on reading regular files from basic Tar archives"
+description = "A no_std, allocation-free reader for Tar archives, in memory or streamed block by block, with GNU and PAX long names"
 version = "0.5.0"
 edition = "2024"
 keywords = ["tar", "tarball", "archive"]

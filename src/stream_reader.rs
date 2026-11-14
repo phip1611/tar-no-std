@@ -15,9 +15,11 @@ use core::{error, fmt};
 /// device, or a network stream.
 ///
 /// It is implemented for closures with the same signature as
-/// [`BlockSource::read_block`].
+/// [`BlockSource::read_block`]. The [crate documentation](crate#streaming)
+/// shows a closure that reads from a [`std::io::Read`] implementation, such as
+/// a file.
 ///
-/// # Examples
+/// # Example
 ///
 /// A type that implements the trait, here a mock of a flash device that holds
 /// the archive:
@@ -60,29 +62,6 @@ use core::{error, fmt};
 /// let entry = reader.next_entry().unwrap().unwrap();
 /// assert_eq!(entry.filename().as_str(), Ok("bye_world_513b.txt"));
 /// assert_eq!(entry.size(), 513);
-/// ```
-///
-/// A closure, here one that reads from a [`std::io::Read`] implementation
-/// such as a file:
-///
-/// ```rust
-/// use std::io::{ErrorKind, Read};
-/// use tar_no_std::TarStreamReader;
-///
-/// let mut file: &[u8] = include_bytes!("../tests/gnu_tar_default.tar");
-/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| {
-///     match file.read_exact(buf) {
-///         Ok(()) => Ok(true),
-///         Err(error) if error.kind() == ErrorKind::UnexpectedEof => Ok(false),
-///         Err(error) => Err(error),
-///     }
-/// });
-///
-/// let mut count = 0;
-/// while let Some(_entry) = reader.next_entry().unwrap() {
-///     count += 1;
-/// }
-/// assert_eq!(count, 3);
 /// ```
 ///
 /// [`std::io::Read`]: https://doc.rust-lang.org/std/io/trait.Read.html
@@ -164,30 +143,34 @@ enum State {
 ///
 /// # Example
 ///
+/// Read a single file from a large archive, for example a configuration file
+/// from an archive on a flash device. The payload of the other files is
+/// skipped.
+///
 /// ```rust
 /// use tar_no_std::TarStreamReader;
 ///
+/// # fn main() -> Result<(), tar_no_std::StreamError<()>> {
+/// // Stands in for a flash device or a network stream.
 /// let archive = include_bytes!("../tests/gnu_tar_default.tar");
 /// let mut blocks = archive.chunks_exact(512);
-/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| {
-///     let Some(block) = blocks.next() else {
-///         return Ok::<_, ()>(false);
+/// let mut reader = TarStreamReader::new(|block: &mut [u8; 512]| {
+///     let Some(next) = blocks.next() else {
+///         return Ok(false);
 ///     };
-///     buf.copy_from_slice(block);
+///     block.copy_from_slice(next);
 ///     Ok(true)
 /// });
 ///
 /// let mut buf = [0; 64];
-/// while let Some(mut entry) = reader.next_entry().unwrap() {
-///     println!("{:?} ({} bytes)", entry.filename(), entry.size());
-///     loop {
-///         let n = entry.read_payload(&mut buf).unwrap();
-///         if n == 0 {
-///             break;
-///         }
-///         println!("  {:?}", &buf[..n]);
+/// while let Some(mut entry) = reader.next_entry()? {
+///     if entry.filename().as_str() == Ok("hello_world.txt") {
+///         let n = entry.read_payload(&mut buf)?;
+///         assert_eq!(&buf[..n], b"Hello World\n");
 ///     }
 /// }
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// [`TarArchiveRef`]: crate::TarArchiveRef
