@@ -13,10 +13,6 @@ use core::str::Utf8Error;
 use core::{error, fmt};
 use log::warn;
 
-/// Minimum amount of blocks that an archive must have to be considered sane:
-/// the two terminating zero blocks of an empty archive.
-pub const MIN_BLOCK_COUNT: usize = 2;
-
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
 pub struct ArchiveEntry<'a> {
@@ -92,13 +88,6 @@ pub enum CorruptDataError {
     EmptyArchive,
     /// The archive length is not a multiple of the 512-byte block size.
     InvalidBlockSize,
-    /// The archive is shorter than [`MIN_BLOCK_COUNT`] blocks.
-    TooShort {
-        /// Total number of bytes in the archive.
-        byte_count: usize,
-        /// Number of complete 512-byte blocks in the archive.
-        block_count: usize,
-    },
     /// The header at `block_index` has an invalid checksum.
     InvalidChecksum {
         /// Index of the invalid header block.
@@ -129,13 +118,6 @@ impl Display for CorruptDataError {
         match self {
             Self::EmptyArchive => f.write_str("archive contains no data"),
             Self::InvalidBlockSize => f.write_str("archive length is not a multiple of 512 bytes"),
-            Self::TooShort {
-                byte_count,
-                block_count,
-            } => write!(
-                f,
-                "archive is too short: {byte_count} bytes ({block_count} blocks), expected at least {MIN_BLOCK_COUNT} blocks"
-            ),
             Self::InvalidChecksum { block_index } => {
                 write!(f, "header at block {block_index} has an invalid checksum")
             }
@@ -176,10 +158,10 @@ pub struct TarArchive {
 impl TarArchive {
     /// Creates an owning wrapper around validated Tar archive bytes.
     ///
-    /// The supplied data must have a valid block layout, contain at least the
-    /// minimum number of blocks, and end with two zero blocks. Each archive
-    /// header must have a valid checksum and type flag, and every payload size
-    /// must lead to a header or the terminating zero blocks within the archive.
+    /// The supplied data must have a valid block layout and end with two zero
+    /// blocks. Each archive header must have a valid checksum and type flag,
+    /// and every payload size must lead to a header or the terminating zero
+    /// blocks within the archive.
     ///
     /// Validation checks the archive structure required for safe iteration. It
     /// does not guarantee that every supported entry can be consumed without
@@ -237,10 +219,10 @@ pub struct TarArchiveRef<'a> {
 impl<'a> TarArchiveRef<'a> {
     /// Creates a borrowed wrapper around validated Tar archive bytes.
     ///
-    /// The supplied data must have a valid block layout, contain at least the
-    /// minimum number of blocks, and end with two zero blocks. Each archive
-    /// header must have a valid checksum and type flag, and every payload size
-    /// must lead to a header or the terminating zero blocks within the archive.
+    /// The supplied data must have a valid block layout and end with two zero
+    /// blocks. Each archive header must have a valid checksum and type flag,
+    /// and every payload size must lead to a header or the terminating zero
+    /// blocks within the archive.
     ///
     /// Validation checks the archive structure required for safe iteration. It
     /// does not guarantee that every supported entry can be consumed without
@@ -254,8 +236,8 @@ impl<'a> TarArchiveRef<'a> {
 
     /// Validates the archive's overall block layout and header sequence.
     ///
-    /// The archive must not be empty, must have a length that is a multiple of
-    /// [`BLOCKSIZE`], and must contain at least [`MIN_BLOCK_COUNT`] blocks.
+    /// The archive must not be empty and must have a length that is a multiple
+    /// of [`BLOCKSIZE`].
     /// Header-specific validation is delegated to [`Self::validate_headers`].
     fn validate(data: &'a [u8]) -> Result<(), CorruptDataError> {
         if data.is_empty() {
@@ -263,12 +245,6 @@ impl<'a> TarArchiveRef<'a> {
         }
         if data.len() % BLOCKSIZE != 0 {
             return Err(CorruptDataError::InvalidBlockSize);
-        }
-        if data.len() / BLOCKSIZE < MIN_BLOCK_COUNT {
-            return Err(CorruptDataError::TooShort {
-                byte_count: data.len(),
-                block_count: data.len() / BLOCKSIZE,
-            });
         }
 
         Self::validate_headers(data)
@@ -497,10 +473,7 @@ mod tests {
         );
         assert_eq!(
             TarArchiveRef::new(&[0; BLOCKSIZE]),
-            Err(CorruptDataError::TooShort {
-                byte_count: BLOCKSIZE,
-                block_count: 1,
-            })
+            Err(CorruptDataError::MissingTerminator)
         );
         // Two zero blocks are a valid empty archive, like for TarStreamParser.
         assert!(TarArchiveRef::new(&[0; 2 * BLOCKSIZE]).is_ok());
@@ -515,7 +488,7 @@ mod tests {
                 TarArchive::new(vec![0].into_boxed_slice()),
                 Err(CorruptDataError::InvalidBlockSize)
             );
-            assert!(TarArchive::new(vec![0; BLOCKSIZE * MIN_BLOCK_COUNT].into_boxed_slice()).is_ok());
+            assert!(TarArchive::new(vec![0; 2 * BLOCKSIZE].into_boxed_slice()).is_ok());
             assert_eq!(
                 TarArchive::try_from(vec![0].into_boxed_slice()),
                 Err(CorruptDataError::InvalidBlockSize)
@@ -773,7 +746,7 @@ mod tests {
 
     #[test]
     fn test_constructor_rejects_missing_end_marker() {
-        let mut data = [0; BLOCKSIZE * MIN_BLOCK_COUNT];
+        let mut data = [0; 2 * BLOCKSIZE];
         data[BLOCKSIZE] = 1;
 
         assert_eq!(

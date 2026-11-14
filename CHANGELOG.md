@@ -15,8 +15,9 @@
   for example by an interrupt or a network stack. It reports each block as a
   `StreamEvent`.
 - `TarArchiveRef::new` and `TarArchive::new` now accept an empty archive that
-  only consists of the two terminating zero blocks. `MIN_BLOCK_COUNT` is now 2
-  instead of 3.
+  only consists of the two terminating zero blocks. `MIN_BLOCK_COUNT` and
+  `CorruptDataError::TooShort` were removed: a single block is now reported as
+  `MissingTerminator` or as an invalid header, like by `TarStreamParser`.
 - `TarArchive` now implements `TryFrom<Box<[u8]>>` instead of
   `From<Box<[u8]>>`, which panicked for invalid archives.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
