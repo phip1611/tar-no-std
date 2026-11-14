@@ -161,4 +161,4 @@ pub use archive::*;
 pub use header::*;
 pub use stream::*;
 pub use stream_reader::*;
-pub use tar_format_types::*;
+pub use tar_format_types::{TarFormatOctal, TarFormatString};

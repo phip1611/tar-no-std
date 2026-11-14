@@ -6,6 +6,8 @@
   `TarFormatDecimal<12>`. The field is octal in the Tar format, so it was
   previously parsed to a wrong value.
 - Removed `TarFormatDecimal`, which is no longer used by any header field.
+- `TarFormatNumber` is no longer public. It was only used inside
+  `TarFormatOctal`.
 - Added `TarStreamReader` to read archives block by block from a
   `BlockSource` without holding them in memory. Its errors are reported as
   `StreamError`.
