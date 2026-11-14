@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Module for [`TarArchiveRef`]. If the `alloc`-feature is enabled, this crate
-//! also exports `TarArchive`, which owns data on the heap.
+//! Module for [`TarArchiveRef`], which reads a Tar archive in memory.
+//!
+//! If the `alloc`-feature is enabled, this crate also exports `TarArchive`,
+//! which owns data on the heap.
 
 use crate::header::PosixHeader;
 use crate::tar_format_types::TarFormatString;
@@ -13,8 +15,9 @@ use core::str::Utf8Error;
 use core::{error, fmt};
 use log::debug;
 
-/// Describes an entry in an archive.
-/// Currently only supports files but no directories.
+/// Regular file in a [`TarArchiveRef`] or `TarArchive`.
+///
+/// Directories and other special entries are not supported.
 pub struct ArchiveEntry<'a> {
     /// Filename, including the ustar prefix.
     filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
@@ -215,8 +218,9 @@ impl From<TarArchive> for Box<[u8]> {
     }
 }
 
-/// Wrapper type around bytes, which represents a Tar archive. To iterate the
-/// entries, use [`TarArchiveRef::entries`].
+/// Validated Tar archive that borrows its bytes.
+///
+/// To iterate the entries, use [`TarArchiveRef::entries`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchiveRef<'a> {
     /// Validated archive bytes.
@@ -546,9 +550,10 @@ mod tests {
         println!("{entries:#?}");
     }
 
-    /// Tests various weird (= invalid, corrupt) tarballs that are bundled
-    /// within this file. The tarball(s) originate from a fuzzing process from a
-    /// GitHub contributor [0].
+    /// Tests weird (= invalid, corrupt) tarballs that are bundled in a tarball.
+    ///
+    /// The tarballs originate from a fuzzing process by a GitHub contributor
+    /// [0].
     ///
     /// The outer archive is valid, while every nested fuzzer input must fail
     /// checksum validation without panicking.
@@ -616,7 +621,7 @@ mod tests {
         assert_archive_content(&entries);
     }
 
-    /// Tests to read the entries from an existing tarball with a directory in it
+    /// Tests to read the entries from an existing tarball with a directory in it.
     #[test]
     fn test_archive_with_long_dir_entries() {
         // tarball created with:
@@ -820,9 +825,10 @@ mod tests {
         write_checksum(hdr);
     }
 
-    /// Tests that the parsed archive matches the expected order. The tarballs
-    /// the tests directory were created once by me with files in the order
-    /// specified in this test.
+    /// Tests that the parsed archive matches the expected order.
+    ///
+    /// The tarballs in the tests directory were created once by me with files
+    /// in the order specified in this test.
     fn assert_archive_content(entries: &[ArchiveEntry]) {
         use crate::ModeFlags;
         let permissions = ModeFlags::OwnerRead
@@ -899,8 +905,10 @@ mod tests {
         );
     }
 
-    /// Tests that the parsed archive matches the expected order and the filename includes
-    /// the directory name. The tarballs the tests directory were created once by me with files
+    /// Tests that the parsed archive matches the expected order and the
+    /// filenames include the directory name.
+    ///
+    /// The tarballs in the tests directory were created once by me with files
     /// in the order specified in this test.
     fn assert_archive_with_dir_content(entries: &[ArchiveEntry]) {
         assert_eq!(entries.len(), 3);

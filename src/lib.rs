@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-//! # `tar-no-std` - Parse Tar Archives (Tarballs)
+//! Library to read Tar archives (tarballs) in `no_std` environments with zero
+//! allocations.
+//!
+//! If you have a standard environment and need full feature support, I
+//! recommend the use of <https://crates.io/crates/tar> instead.
 //!
 //! _Due to historical reasons, there are several formats of Tar archives. All of
 //! them are based on the same principles, but have some subtle differences that
 //! often make them incompatible with each other._ [(reference)](https://www.gnu.org/software/tar/manual/html_section/Formats.html)
-//!
-//! Library to read Tar archives in `no_std` environments with zero allocations. If
-//! you have a standard environment and need full feature support, I recommend the
-//! use of <https://crates.io/crates/tar> instead.
 //!
 //! ## TL;DR
 //!
@@ -144,14 +144,16 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-/// Size of a Tar block in bytes. A Tar archive is a sequence of such blocks,
-/// each holding either a header or payload.
+/// Size of a Tar block in bytes.
+///
+/// A Tar archive is a sequence of such blocks, each holding either a header or
+/// payload.
 pub const BLOCKSIZE: usize = 512;
 /// Maximum filename length of the base Tar format including the terminating NULL-byte.
 const NAME_LEN: usize = 100;
-/// Maximum long filename length of the base Tar format including the prefix
+/// Maximum long filename length of the base Tar format including the prefix.
 const POSIX_1003_MAX_FILENAME_LEN: usize = 256;
-/// Maximum length of the prefix in Posix tar format
+/// Maximum length of the prefix in Posix tar format.
 const PREFIX_LEN: usize = 155;
 
 mod archive;

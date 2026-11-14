@@ -337,8 +337,9 @@ impl<S> StreamEntry<'_, S> {
 
 impl<S: BlockSource> StreamEntry<'_, S> {
     /// Reads payload bytes of the file into `buf` and returns how many bytes
-    /// were read, like [`std::io::Read::read`]. Returns `0` once the whole
-    /// payload was read, or if `buf` is empty.
+    /// were read, like [`std::io::Read::read`].
+    ///
+    /// Returns `0` once the whole payload was read, or if `buf` is empty.
     ///
     /// # Errors
     /// Returns [`StreamError::Source`] if the source cannot be read and
