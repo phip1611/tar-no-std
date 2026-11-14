@@ -514,6 +514,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "slow under Miri, and smaller tests cover the same unsafe code"
+    )]
     fn test_stream_matches_archive_entries() {
         for data in [
             include_bytes!("../tests/gnu_tar_default.tar") as &[u8],
@@ -864,6 +868,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "slow under Miri, and smaller tests cover the same unsafe code"
+    )]
     fn test_stream_rejects_weird_fuzzing_tarballs() {
         let main_tarball =
             TarArchiveRef::new(include_bytes!("../tests/weird_fuzzing_tarballs.tar")).unwrap();
