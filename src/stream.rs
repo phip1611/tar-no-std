@@ -227,8 +227,8 @@ impl TarStreamParser {
                     self.state = State::FirstZeroBlock;
                     return Ok(None);
                 }
-                let (type_flag, size) = parse_header(block_index, hdr)?;
-                let skip = !type_flag.is_regular_file();
+                let (_, size) = parse_header(block_index, hdr)?;
+                let skip = !hdr.is_regular_file();
                 if size > 0 {
                     self.state = State::Payload {
                         header_block_index: block_index,
@@ -403,6 +403,21 @@ mod tests {
 
         let files = parse_files(&data);
         assert_eq!(files[0].0, "bye_world_513b.txt");
+        assert_eq!(files, archive_entries(&data));
+    }
+
+    #[test]
+    fn test_stream_skips_old_style_directories() {
+        let mut data = include_bytes!("../tests/gnu_tar_default_with_dir.tar").to_vec();
+        let mut block = header_block(&data);
+        // Turn the directory "tests/" into a regular file of an old archive,
+        // which marks a directory by its trailing slash.
+        block[TYPEFLAG_OFFSET] = TypeFlag::AREGTYPE.to_byte();
+        write_checksum(&mut block);
+        data[..BLOCKSIZE].copy_from_slice(&block);
+
+        let files = parse_files(&data);
+        assert_eq!(files[0].0, "tests/hello_world.txt");
         assert_eq!(files, archive_entries(&data));
     }
 

@@ -30,6 +30,8 @@
   such as Latin-1 filenames.
 - Numeric header fields with leading spaces, as written by some old Tar
   implementations, are now accepted.
+- Regular files whose name ends with a slash are now skipped as directories,
+  like GNU tar does. Old Tar versions wrote directories this way.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

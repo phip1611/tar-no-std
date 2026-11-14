@@ -371,6 +371,17 @@ impl PosixHeader {
         filename
     }
 
+    /// Whether the entry is a regular file.
+    ///
+    /// Like GNU tar, this treats a regular file whose name ends with a slash
+    /// as a directory, as old Tar versions wrote directories this way.
+    pub(crate) fn is_regular_file(&self) -> bool {
+        self.typeflag
+            .try_to_type_flag()
+            .is_ok_and(TypeFlag::is_regular_file)
+            && !self.filename().as_bytes().ends_with(b"/")
+    }
+
     /// Whether the checksum field matches the content of the header.
     pub(crate) fn has_valid_checksum(&self) -> bool {
         self.cksum

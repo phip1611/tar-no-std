@@ -441,12 +441,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         // Ignore directory entries, i.e. yield only regular files. Works as
         // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
-        while !hdr
-            .typeflag
-            .try_to_type_flag()
-            .expect("type flag should be valid after successful validation")
-            .is_regular_file()
-        {
+        while !hdr.is_regular_file() {
             debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
 
             // Update properties.
@@ -795,6 +790,20 @@ mod tests {
         let entry = archive.entries().next().unwrap();
         assert_eq!(entry.filename().as_str(), Ok("bye_world_513b.txt"));
         assert_eq!(entry.size(), 513);
+    }
+
+    #[test]
+    fn test_old_style_directory_is_skipped() {
+        // Setup: turn the directory into an old-style one, i.e. a regular file
+        // whose name ends with a slash.
+        let mut data = include_bytes!("../tests/gnu_tar_default_with_dir.tar").to_vec();
+        assert_eq!(&data[..7], b"tests/\0");
+        data[TYPEFLAG_OFFSET] = TypeFlag::AREGTYPE.to_byte();
+        write_first_header_checksum(&mut data);
+
+        let archive = TarArchiveRef::new(data.as_slice()).unwrap();
+        let entry = archive.entries().next().unwrap();
+        assert_eq!(entry.filename().as_str(), Ok("tests/hello_world.txt"));
     }
 
     #[test]
