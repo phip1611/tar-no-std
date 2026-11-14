@@ -389,8 +389,8 @@ impl PosixHeader {
     /// Returns the filename of the entry, including the ustar prefix if there
     /// is one.
     ///
-    /// GNU long names are stored in a separate entry before the header, so
-    /// they are not included. [`ArchiveEntry::filename`] and
+    /// GNU long names and PAX paths are stored in separate entries before the
+    /// header, so they are not included. [`ArchiveEntry::filename`] and
     /// [`StreamEntry::filename`] include them.
     ///
     /// [`ArchiveEntry::filename`]: crate::ArchiveEntry::filename

@@ -337,8 +337,8 @@ impl<S> StreamEntry<'_, S> {
         PosixHeader::from_block(&self.reader.header, 0)
     }
 
-    /// Filename of the file, including the ustar prefix or the GNU long name
-    /// if there is one.
+    /// Filename of the file, including the ustar prefix, or the GNU long name
+    /// or PAX path if there is one.
     #[must_use]
     pub const fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
         self.reader.filename
@@ -434,7 +434,7 @@ mod tests {
             .collect()
     }
 
-    const ARCHIVES: [&[u8]; 14] = [
+    const ARCHIVES: [&[u8]; 15] = [
         include_bytes!("../tests/gnu_tar_default.tar"),
         include_bytes!("../tests/gnu_tar_default_with_dir.tar"),
         include_bytes!("../tests/gnu_tar_gnu.tar"),
@@ -447,6 +447,7 @@ mod tests {
         include_bytes!("../tests/gnu_tar_v7.tar"),
         include_bytes!("../tests/gnu_tar_gnu_long_names.tar"),
         include_bytes!("../tests/gnu_tar_gnu_label.tar"),
+        include_bytes!("../tests/gnu_tar_posix_long_names.tar"),
         include_bytes!("../tests/mac_tar_ustar_with_dir.tar"),
         include_bytes!("../tests/weird_fuzzing_tarballs.tar"),
     ];

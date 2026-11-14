@@ -42,6 +42,10 @@
   or volume labels, are now skipped instead of rejected, like GNU tar does.
   They are reported as `TypeFlag::VENDOR` and `TypeFlag::GNUVOLHDR`. GNU
   sparse files (`S`) are still rejected.
+- PAX `path` records of up to 256 bytes are now applied to the filename, like
+  GNU tar and bsdtar do. Before, the filename was taken from the regular
+  header, which holds a cut-off or replacement name for long paths and, in
+  Python's default format, for non-ASCII names.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

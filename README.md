@@ -14,22 +14,21 @@ Most ordinary Tar archives containing regular files will work.
 
 ## Limitations
 
-Archives created by a typical GNU tar or macOS `tar` invocation work when their
-regular-file names and sizes fit in the regular Tar headers. This includes
-basic Tar and ustar [archives](https://www.gnu.org/software/tar/manual/html_section/Formats.html),
-as well as PAX archives that use extended records only for optional metadata
-such as high-precision timestamps. PAX headers and their metadata are skipped;
-the following regular-file headers provide the filenames and sizes.
+Archives created by a typical GNU tar, bsdtar (macOS), busybox, or Python
+invocation work. This includes basic Tar, ustar, GNU, and PAX
+[archives](https://www.gnu.org/software/tar/manual/html_section/Formats.html).
+GNU long names and PAX paths of up to 256 bytes are applied to the filenames.
+Other PAX records, such as high-precision timestamps, are skipped.
 
-Archives that rely on unsupported extensions do not work. GNU long names are
-supported, and other vendor entries, such as GNU incremental dumps or volume
-labels, are skipped. GNU sparse files are rejected with
-`CorruptDataError::InvalidTypeFlag`. PAX records are skipped, so paths and file
-sizes that only exist in PAX records are not applied. The maximum supported
-filename length is 256 characters excluding the NULL-byte, and the maximum
-supported file size is 8GiB. Directories, links, and other special entries are
-skipped; iteration yields only regular files, preserving directory paths encoded
-in their names.
+Archives that rely on unsupported extensions do not work. GNU sparse files in
+GNU format are rejected with `CorruptDataError::InvalidTypeFlag`. Sparse files
+in PAX format, and PAX sizes, which GNU tar writes for files larger than 8GiB,
+are not applied, so such files are read with wrong content. Other vendor
+entries, such as GNU incremental dumps or volume labels, are skipped. The
+maximum supported filename length is 256 characters excluding the NULL-byte, and
+the maximum supported file size is 8GiB. Directories, links, and other special
+entries are skipped; iteration yields only regular files, preserving directory
+paths encoded in their names.
 
 ## Use Case
 
