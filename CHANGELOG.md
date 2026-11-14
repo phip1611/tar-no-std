@@ -12,6 +12,9 @@
 - Added `TarStreamParser` for archives whose blocks are pushed to the caller,
   for example by an interrupt or a network stack. It reports each block as a
   `StreamEvent`.
+- `TarArchiveRef::new` and `TarArchive::new` now accept an empty archive that
+  only consists of the two terminating zero blocks. `MIN_BLOCK_COUNT` is now 2
+  instead of 3.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

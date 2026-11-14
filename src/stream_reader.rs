@@ -146,10 +146,8 @@ enum State {
 ///
 /// Unlike [`TarArchiveRef`], the archive does not need to be in memory: the
 /// reader only keeps the current block and the header of the current file,
-/// about 1 KiB. It validates the archive like [`TarArchiveRef::new`] does,
-/// except that it does not require [`MIN_BLOCK_COUNT`] blocks: two zero
-/// blocks are a valid empty archive. Like [`TarArchiveRef::entries`], it
-/// only reports regular files.
+/// about 1 KiB. It validates the archive like [`TarArchiveRef::new`] does
+/// and, like [`TarArchiveRef::entries`], only reports regular files.
 ///
 /// Payload that was not read is skipped by the next call to
 /// [`TarStreamReader::next_entry`].
@@ -189,7 +187,6 @@ enum State {
 /// [`TarArchiveRef`]: crate::TarArchiveRef
 /// [`TarArchiveRef::new`]: crate::TarArchiveRef::new
 /// [`TarArchiveRef::entries`]: crate::TarArchiveRef::entries
-/// [`MIN_BLOCK_COUNT`]: crate::MIN_BLOCK_COUNT
 pub struct TarStreamReader<S> {
     /// Source of the blocks.
     source: S,

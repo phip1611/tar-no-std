@@ -13,10 +13,9 @@ use core::str::Utf8Error;
 use core::{error, fmt};
 use log::warn;
 
-/// Minimum amount of blocks that an archive must have to be considered sane.
-/// - one header block
-/// - two terminating zero blocks
-pub const MIN_BLOCK_COUNT: usize = 3;
+/// Minimum amount of blocks that an archive must have to be considered sane:
+/// the two terminating zero blocks of an empty archive.
+pub const MIN_BLOCK_COUNT: usize = 2;
 
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
@@ -503,7 +502,8 @@ mod tests {
                 block_count: 1,
             })
         );
-        assert!(TarArchiveRef::new(&[0; BLOCKSIZE * MIN_BLOCK_COUNT]).is_ok());
+        // Two zero blocks are a valid empty archive, like for TarStreamParser.
+        assert!(TarArchiveRef::new(&[0; 2 * BLOCKSIZE]).is_ok());
 
         #[cfg(feature = "alloc")]
         {
