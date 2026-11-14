@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: MIT
 
+//! Reads an archive that is owned on the heap, for example the output of a
+//! gzip decoder.
+
 use tar_no_std::TarArchive;
 
 fn main() {
-    // log: not mandatory
+    // Optional: shows the log messages of the crate, such as skipped entries.
     unsafe {
         std::env::set_var("RUST_LOG", "trace");
         std::env::set_var("RUST_LOG_STYLE", "always");
     }
     env_logger::init();
 
-    // also works in no_std environment (except the println!, of course)
-    let archive = include_bytes!("../tests/gnu_tar_default.tar");
-    let archive_heap_owned = archive.to_vec().into_boxed_slice();
-    let archive = TarArchive::new(archive_heap_owned).unwrap();
-    // Vec needs an allocator of course, but the library itself doesn't need one
-    let entries = archive.entries().collect::<Vec<_>>();
-    println!("{:#?}", entries);
-    println!("content of last file:");
-    println!(
-        "{:#?}",
-        entries[2].data_as_str().expect("Should be valid UTF-8")
-    );
+    // Stands in for the decompressed bytes of a .tar.gz file.
+    let data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+    let archive = TarArchive::try_from(data.into_boxed_slice()).expect("archive should be valid");
+
+    for entry in archive.entries() {
+        let name = entry.filename();
+        println!("{} ({} bytes)", name.as_str().unwrap_or("?"), entry.size());
+    }
 }
