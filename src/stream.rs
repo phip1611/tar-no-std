@@ -414,6 +414,9 @@ fn parse_header(
         .typeflag
         .try_to_type_flag()
         .map_err(|_| CorruptDataError::InvalidTypeFlag { block_index })?;
+    if !type_flag.is_supported() {
+        return Err(CorruptDataError::UnsupportedTypeFlag { block_index });
+    }
     let size = if type_flag.has_payload() {
         hdr.size
             .as_number::<usize>()
@@ -736,6 +739,17 @@ mod tests {
         assert_eq!(
             TarStreamParser::new().parse_block(&block),
             Err(CorruptDataError::InvalidTypeFlag { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_rejects_unsupported_type_flag() {
+        let mut block = header_block(include_bytes!("../tests/gnu_tar_default.tar"));
+        block[TYPEFLAG_OFFSET] = TypeFlag::GNUSPARSE.to_byte();
+        write_checksum(&mut block);
+        assert_eq!(
+            TarStreamParser::new().parse_block(&block),
+            Err(CorruptDataError::UnsupportedTypeFlag { block_index: 0 })
         );
     }
 

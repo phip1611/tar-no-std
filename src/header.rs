@@ -192,13 +192,16 @@ pub enum TypeFlag {
     ///
     /// It has no payload.
     GNUVOLHDR = b'V',
+    /// GNU sparse file, which is not supported yet.
+    ///
+    /// Its size field does not count the extension blocks of its sparse map,
+    /// so it can neither be read nor skipped.
+    GNUSPARSE = b'S',
     /// Entry of a vendor-specific type from `A` to `Z`, as reserved by POSIX.
     ///
     /// Examples are GNU incremental dumps (`D`) and multi-volume continuations
     /// (`M`), and Solaris extended headers (`X`). The payload is described by
-    /// the size field. GNU sparse files (`S`) are not included: their size
-    /// field does not describe all of their blocks, so they cannot be skipped
-    /// and are rejected.
+    /// the size field. GNU sparse files (`S`) have their own variant.
     VENDOR(u8),
 }
 
@@ -230,8 +233,17 @@ impl TypeFlag {
             Self::GNULONGNAME => b'L',
             Self::GNULONGLINK => b'K',
             Self::GNUVOLHDR => b'V',
+            Self::GNUSPARSE => b'S',
             Self::VENDOR(byte) => byte,
         }
+    }
+
+    /// Whether this crate supports entries of this type.
+    ///
+    /// Archives with unsupported entries are rejected, as they cannot be
+    /// read correctly.
+    pub(crate) const fn is_supported(self) -> bool {
+        !matches!(self, Self::GNUSPARSE)
     }
 
     /// Whether this is an extension header that describes the next entry,
@@ -276,7 +288,7 @@ impl TryFrom<TypeFlagRaw> for TypeFlag {
             b'L' => Ok(Self::GNULONGNAME),
             b'K' => Ok(Self::GNULONGLINK),
             b'V' => Ok(Self::GNUVOLHDR),
-            b'S' => Err(InvalidTypeFlagError(b'S')),
+            b'S' => Ok(Self::GNUSPARSE),
             vendor @ b'A'..=b'Z' => Ok(Self::VENDOR(vendor)),
             e => Err(InvalidTypeFlagError(e)),
         }

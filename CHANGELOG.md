@@ -51,6 +51,9 @@
   PAX format, or a PAX `size` that differs from the regular header, which
   writers use for files larger than 8GiB. Before, sparse files were read with
   wrong content, and such large files failed with misleading errors.
+- Added `CorruptDataError::UnsupportedTypeFlag` for valid type flags that are
+  not supported yet, such as GNU sparse files (`S`), which were reported as
+  `InvalidTypeFlag` before. `TypeFlag::GNUSPARSE` represents them.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

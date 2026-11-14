@@ -103,9 +103,15 @@ pub enum CorruptDataError {
         /// Index of the invalid header block.
         block_index: usize,
     },
-    /// The header at `block_index` has an unsupported type flag.
+    /// The header at `block_index` has an invalid type flag.
     InvalidTypeFlag {
         /// Index of the invalid header block.
+        block_index: usize,
+    },
+    /// The header at `block_index` has a type flag that is not (yet)
+    /// supported, such as a GNU sparse file.
+    UnsupportedTypeFlag {
+        /// Index of the unsupported header block.
         block_index: usize,
     },
     /// The payload size in the header at `block_index` is invalid.
@@ -153,6 +159,10 @@ impl Display for CorruptDataError {
             Self::InvalidTypeFlag { block_index } => {
                 write!(f, "header at block {block_index} has an invalid type flag")
             }
+            Self::UnsupportedTypeFlag { block_index } => write!(
+                f,
+                "header at block {block_index} has a type flag that is not supported yet"
+            ),
             Self::InvalidPayloadSize { block_index } => {
                 write!(
                     f,
@@ -328,6 +338,9 @@ impl<'a> TarArchiveRef<'a> {
                 .typeflag
                 .try_to_type_flag()
                 .map_err(|_| CorruptDataError::InvalidTypeFlag { block_index })?;
+            if !typeflag.is_supported() {
+                return Err(CorruptDataError::UnsupportedTypeFlag { block_index });
+            }
             let mut next_block_index = block_index
                 .checked_add(1)
                 .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
@@ -946,13 +959,12 @@ mod tests {
     #[test]
     fn test_rejects_gnu_sparse_file() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
-        // GNU sparse file.
-        data[TYPEFLAG_OFFSET] = b'S';
+        data[TYPEFLAG_OFFSET] = TypeFlag::GNUSPARSE.to_byte();
         write_first_header_checksum(&mut data);
 
         assert_eq!(
             TarArchiveRef::new(data.as_slice()),
-            Err(CorruptDataError::InvalidTypeFlag { block_index: 0 })
+            Err(CorruptDataError::UnsupportedTypeFlag { block_index: 0 })
         );
     }
 
