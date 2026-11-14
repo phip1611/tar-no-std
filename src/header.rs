@@ -18,11 +18,12 @@ use crate::{
 };
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
+use core::mem::offset_of;
 use core::num::ParseIntError;
 use core::{error, fmt, slice};
 
 /// Offset of the checksum field in the header.
-const CKSUM_OFFSET: usize = 148;
+const CKSUM_OFFSET: usize = offset_of!(PosixHeader, cksum);
 /// Length of the checksum field in bytes.
 const CKSUM_LEN: usize = 8;
 
