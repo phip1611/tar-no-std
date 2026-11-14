@@ -17,6 +17,7 @@ use core::str::{Utf8Error, from_utf8};
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatString<const N: usize> {
+    /// Raw bytes, padded with NUL bytes if the string is shorter than `N`.
     bytes: [u8; N],
 }
 

@@ -44,8 +44,11 @@ enum State {
     /// The next block holds payload, of an entry that is skipped if `skip`
     /// is set.
     Payload {
+        /// Index of the header of the entry.
         header_block_index: usize,
+        /// Payload bytes of the entry in the next blocks.
         remaining: usize,
+        /// Whether the entry is skipped.
         skip: bool,
     },
     /// The next block must be the second zero block of the terminator.

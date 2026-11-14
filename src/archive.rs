@@ -16,13 +16,18 @@ use log::debug;
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
 pub struct ArchiveEntry<'a> {
+    /// Filename, including the ustar prefix.
     filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
+    /// Payload of the file, without padding.
     data: &'a [u8],
+    /// Size of the payload in bytes.
     size: usize,
+    /// Header of the file in the archive.
     posix_header: &'a PosixHeader,
 }
 
 impl<'a> ArchiveEntry<'a> {
+    /// Creates an entry from its parts.
     const fn new(
         filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
         data: &'a [u8],
@@ -151,6 +156,7 @@ impl error::Error for CorruptDataError {}
 #[cfg(feature = "alloc")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchive {
+    /// Validated archive bytes.
     data: Box<[u8]>,
 }
 
@@ -213,6 +219,7 @@ impl From<TarArchive> for Box<[u8]> {
 /// entries, use [`TarArchiveRef::entries`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TarArchiveRef<'a> {
+    /// Validated archive bytes.
     data: &'a [u8],
 }
 
@@ -330,11 +337,14 @@ impl<'a> TarArchiveRef<'a> {
 /// [`TarArchiveRef::headers`].
 #[derive(Debug)]
 pub struct ArchiveHeaderIterator<'a> {
+    /// Validated archive bytes.
     archive_data: &'a [u8],
+    /// Index of the block with the next header.
     next_hdr_block_index: usize,
 }
 
 impl<'a> ArchiveHeaderIterator<'a> {
+    /// Creates an iterator over the headers of validated archive bytes.
     #[must_use]
     fn new(archive: &'a [u8]) -> Self {
         assert!(!archive.is_empty());
@@ -351,6 +361,7 @@ impl<'a> ArchiveHeaderIterator<'a> {
     }
 }
 
+/// Index of a 512-byte block in the archive.
 type BlockIndex = usize;
 
 impl<'a> Iterator for ArchiveHeaderIterator<'a> {
@@ -407,10 +418,12 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
 pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
 
 impl<'a> ArchiveEntryIterator<'a> {
+    /// Creates an iterator over the regular files of validated archive bytes.
     fn new(archive: &'a [u8]) -> Self {
         Self(ArchiveHeaderIterator::new(archive))
     }
 
+    /// Returns the next header of any type.
     fn next_hdr(&mut self) -> Option<(BlockIndex, &'a PosixHeader)> {
         self.0.next()
     }

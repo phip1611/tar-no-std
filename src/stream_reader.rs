@@ -302,6 +302,7 @@ impl<S: BlockSource> TarStreamReader<S> {
 
 /// Regular file returned by [`TarStreamReader::next_entry`].
 pub struct StreamEntry<'a, S> {
+    /// Reader that holds the header and the payload position of the file.
     reader: &'a mut TarStreamReader<S>,
 }
 

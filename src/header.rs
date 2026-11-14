@@ -17,13 +17,17 @@ use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
 use core::{error, fmt, slice};
 
+/// Offset of the checksum field in the header.
 const CKSUM_OFFSET: usize = 148;
+/// Length of the checksum field in bytes.
 const CKSUM_LEN: usize = 8;
 
 /// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
 pub enum ModeError {
+    /// The mode is not a valid octal number.
     ParseInt(ParseIntError),
+    /// The mode has bits that are not valid [`ModeFlags`].
     IllegalMode,
 }
 
@@ -64,6 +68,7 @@ impl Debug for Mode {
     }
 }
 
+/// Error for a type flag that is not a known [`TypeFlag`].
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq)]
 pub struct InvalidTypeFlagError(u8);
 
@@ -75,6 +80,9 @@ impl Display for InvalidTypeFlagError {
 
 impl error::Error for InvalidTypeFlagError {}
 
+/// Raw type flag of a [`PosixHeader`].
+///
+/// Use [`TypeFlagRaw::try_to_type_flag`] to parse it.
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
 pub struct TypeFlagRaw(u8);
 
@@ -233,30 +241,43 @@ bitflags::bitflags! {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct PosixHeader {
+    /// Filename without the ustar prefix.
+    ///
+    /// Use [`PosixHeader::filename`] for the full filename.
     pub name: TarFormatString<NAME_LEN>,
+    /// File permissions.
     pub mode: Mode,
+    /// User ID of the owner.
     pub uid: TarFormatOctal<8>,
+    /// Group ID of the owner.
     pub gid: TarFormatOctal<8>,
-    // confusing; size is stored as ASCII string
+    /// Payload size in bytes.
     pub size: TarFormatOctal<12>,
+    /// Modification time in seconds since the Unix epoch.
     pub mtime: TarFormatOctal<12>,
+    /// Checksum of the header.
     pub cksum: TarFormatOctal<8>,
+    /// Type of the entry.
     pub typeflag: TypeFlagRaw,
-    /// Name. There is always a null byte, therefore
-    /// the max len is 99.
+    /// Target of a link entry.
     pub linkname: TarFormatString<NAME_LEN>,
+    /// Format magic, such as `ustar` for ustar archives.
     pub magic: TarFormatString<6>,
+    /// Format version, such as `00` for ustar archives.
     pub version: TarFormatString<2>,
-    /// Username. There is always a null byte, therefore
-    /// the max len is N-1.
+    /// User name of the owner.
     pub uname: TarFormatString<32>,
-    /// Groupname. There is always a null byte, therefore
-    /// the max len is N-1.
+    /// Group name of the owner.
     pub gname: TarFormatString<32>,
+    /// Major device number of a device entry.
     pub dev_major: TarFormatOctal<8>,
+    /// Minor device number of a device entry.
     pub dev_minor: TarFormatOctal<8>,
+    /// Filename prefix of ustar archives.
+    ///
+    /// [`PosixHeader::filename`] joins it with [`PosixHeader::name`].
     pub prefix: TarFormatString<PREFIX_LEN>,
-    // padding => to BLOCKSIZE bytes
+    /// Padding to [`BLOCKSIZE`] bytes.
     pub _pad: [u8; 12],
 }
 
@@ -308,12 +329,16 @@ impl PosixHeader {
         filename
     }
 
+    /// Whether the checksum field matches the content of the header.
     pub(crate) fn has_valid_checksum(&self) -> bool {
         self.cksum
             .as_number::<u64>()
             .is_ok_and(|cksum| cksum == self.computed_checksum())
     }
 
+    /// Computes the checksum of the header.
+    ///
+    /// The bytes of the checksum field count as spaces, as the spec requires.
     pub(crate) fn computed_checksum(&self) -> u64 {
         let ptr = &raw const *self;
         let ptr = ptr.cast::<u8>();
