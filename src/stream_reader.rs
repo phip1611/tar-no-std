@@ -36,7 +36,10 @@ use core::{error, fmt};
 /// impl BlockSource for Flash {
 ///     type Error = PartialBlock;
 ///
-///     fn read_block(&mut self, buf: &mut [u8; 512]) -> Result<bool, PartialBlock> {
+///     fn read_block(
+///         &mut self,
+///         buf: &mut [u8; 512],
+///     ) -> Result<bool, PartialBlock> {
 ///         match self.data.get(self.offset..self.offset + 512) {
 ///             Some(block) => {
 ///                 buf.copy_from_slice(block);
@@ -67,10 +70,12 @@ use core::{error, fmt};
 /// use tar_no_std::TarStreamReader;
 ///
 /// let mut file: &[u8] = include_bytes!("../tests/gnu_tar_default.tar");
-/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| match file.read_exact(buf) {
-///     Ok(()) => Ok(true),
-///     Err(error) if error.kind() == ErrorKind::UnexpectedEof => Ok(false),
-///     Err(error) => Err(error),
+/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| {
+///     match file.read_exact(buf) {
+///         Ok(()) => Ok(true),
+///         Err(error) if error.kind() == ErrorKind::UnexpectedEof => Ok(false),
+///         Err(error) => Err(error),
+///     }
 /// });
 ///
 /// let mut count = 0;
@@ -302,6 +307,7 @@ impl<S: BlockSource> TarStreamReader<S> {
 
 /// Regular file returned by [`TarStreamReader::next_entry`].
 pub struct StreamEntry<'a, S> {
+    /// Reader that holds the header and the payload position of the file.
     reader: &'a mut TarStreamReader<S>,
 }
 
@@ -336,8 +342,9 @@ impl<S> StreamEntry<'_, S> {
 
 impl<S: BlockSource> StreamEntry<'_, S> {
     /// Reads payload bytes of the file into `buf` and returns how many bytes
-    /// were read, like [`std::io::Read::read`]. Returns `0` once the whole
-    /// payload was read, or if `buf` is empty.
+    /// were read, like [`std::io::Read::read`].
+    ///
+    /// Returns `0` once the whole payload was read, or if `buf` is empty.
     ///
     /// # Errors
     /// Returns [`StreamError::Source`] if the source cannot be read and

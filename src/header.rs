@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-//! TAR header definition taken from <https://www.gnu.org/software/tar/manual/html_node/Standard.html>.
-//! A Tar-archive is a collection of 512-byte sized blocks. Unfortunately there are several
-//! TAR-like archive specifications. An Overview can be found here:
-//! <https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats>
+//! Tar header definition taken from the [GNU tar manual].
+//!
+//! A Tar-archive is a collection of 512-byte sized blocks. Unfortunately there
+//! are several Tar-like archive specifications. An overview can be found in
+//! the [GNU tar manual about formats].
+//!
+//! [GNU tar manual]: https://www.gnu.org/software/tar/manual/html_node/Standard.html
+//! [GNU tar manual about formats]: https://www.gnu.org/software/tar/manual/html_node/Formats.html#Formats
 //!
 //! This library focuses on extracting files from the GNU Tar format.
 
@@ -17,13 +21,17 @@ use core::fmt::{Debug, Display, Formatter};
 use core::num::ParseIntError;
 use core::{error, fmt, slice};
 
+/// Offset of the checksum field in the header.
 const CKSUM_OFFSET: usize = 148;
+/// Length of the checksum field in bytes.
 const CKSUM_LEN: usize = 8;
 
 /// Errors that may happen when parsing the [`ModeFlags`].
 #[derive(Debug)]
 pub enum ModeError {
+    /// The mode is not a valid octal number.
     ParseInt(ParseIntError),
+    /// The mode has bits that are not valid [`ModeFlags`].
     IllegalMode,
 }
 
@@ -64,6 +72,7 @@ impl Debug for Mode {
     }
 }
 
+/// Error for a type flag that is not a known [`TypeFlag`].
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq)]
 pub struct InvalidTypeFlagError(u8);
 
@@ -75,12 +84,16 @@ impl Display for InvalidTypeFlagError {
 
 impl error::Error for InvalidTypeFlagError {}
 
+/// Raw type flag of a [`PosixHeader`].
+///
+/// Use [`TypeFlagRaw::try_to_type_flag`] to parse it.
 #[derive(Copy, Clone, PartialOrd, PartialEq, Eq)]
 pub struct TypeFlagRaw(u8);
 
 impl TypeFlagRaw {
-    /// Tries to parse the underlying value as [`TypeFlag`]. This fails if the
-    /// Tar file is corrupt and the type is invalid.
+    /// Tries to parse the underlying value as [`TypeFlag`].
+    ///
+    /// This fails if the Tar file is corrupt and the type is invalid.
     ///
     /// # Errors
     /// Returns [`InvalidTypeFlagError`] for invalid values.
@@ -95,53 +108,72 @@ impl Debug for TypeFlagRaw {
     }
 }
 
-/// Describes the kind of payload, that follows after a
-/// [`PosixHeader`]. The properties of this payload are
-/// described inside the header.
+/// Kind of the entry that a [`PosixHeader`] describes.
+///
+/// The properties of the payload that follows are described inside the header.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TypeFlag {
-    /// Represents a regular file. In order to be compatible with older versions of tar, a typeflag
-    /// value of AREGTYPE should be silently recognized as a regular file. New archives should be
-    /// created using REGTYPE. Also, for backward compatibility, tar treats a regular file whose
-    /// name ends with a slash as a directory.
+    /// Represents a regular file.
+    ///
+    /// In order to be compatible with older versions of tar, a typeflag value
+    /// of AREGTYPE should be silently recognized as a regular file. New
+    /// archives should be created using REGTYPE. Also, for backward
+    /// compatibility, tar treats a regular file whose name ends with a slash as
+    /// a directory.
     REGTYPE = b'0',
-    /// Represents a regular file. In order to be compatible with older versions of tar, a typeflag
-    /// value of AREGTYPE should be silently recognized as a regular file. New archives should be
-    /// created using REGTYPE. Also, for backward compatibility, tar treats a regular file whose
-    /// name ends with a slash as a directory.
+    /// Represents a regular file in old archives.
+    ///
+    /// In order to be compatible with older versions of tar, a typeflag value
+    /// of AREGTYPE should be silently recognized as a regular file. New
+    /// archives should be created using REGTYPE. Also, for backward
+    /// compatibility, tar treats a regular file whose name ends with a slash as
+    /// a directory.
     AREGTYPE = b'\0',
-    /// This flag represents a file linked to another file, of any type, previously archived. Such
-    /// files are identified in Unix by each file having the same device and inode number. The
-    /// linked-to name is specified in the linkname field with a trailing null.
+    /// Represents a hard link to another file, of any type, previously
+    /// archived.
+    ///
+    /// Such files are identified in Unix by each file having the same device
+    /// and inode number. The linked-to name is specified in the linkname field
+    /// with a trailing null.
     LINK = b'1',
-    /// This represents a symbolic link to another file. The linked-to name is specified in the
-    /// linkname field with a trailing null.
+    /// Represents a symbolic link to another file.
+    ///
+    /// The linked-to name is specified in the linkname field with a trailing
+    /// null.
     SYMTYPE = b'2',
-    /// Represents character special files and block special files respectively. In this case the
-    /// devmajor and devminor fields will contain the major and minor device numbers respectively.
-    /// Operating systems may map the device specifications to their own local specification, or
-    /// may ignore the entry.
+    /// Represents a character special file.
+    ///
+    /// The devmajor and devminor fields contain the major and minor device
+    /// numbers. Operating systems may map the device specifications to their
+    /// own local specification, or may ignore the entry.
     CHRTYPE = b'3',
-    /// Represents character special files and block special files respectively. In this case the
-    /// devmajor and devminor fields will contain the major and minor device numbers respectively.
-    /// Operating systems may map the device specifications to their own local specification, or
-    /// may ignore the entry.
+    /// Represents a block special file.
+    ///
+    /// The devmajor and devminor fields contain the major and minor device
+    /// numbers. Operating systems may map the device specifications to their
+    /// own local specification, or may ignore the entry.
     BLKTYPE = b'4',
-    /// This flag specifies a directory or sub-directory. The directory name in the name field
-    /// should end with a slash. On systems where disk allocation is performed on a directory
-    /// basis, the size field will contain the maximum number of bytes (which may be rounded to
-    /// the nearest disk block allocation unit) which the directory may hold. A size field of zero
-    /// indicates no such limiting. Systems which do not support limiting in this manner should
-    /// ignore the size field.
+    /// Represents a directory or sub-directory.
+    ///
+    /// The directory name in the name field should end with a slash. On systems
+    /// where disk allocation is performed on a directory basis, the size field
+    /// will contain the maximum number of bytes (which may be rounded to the
+    /// nearest disk block allocation unit) which the directory may hold. A size
+    /// field of zero indicates no such limiting. Systems which do not support
+    /// limiting in this manner should ignore the size field.
     DIRTYPE = b'5',
-    /// This specifies a FIFO special file. Note that the archiving of a FIFO file archives the
-    /// existence of this file and not its contents.
+    /// Represents a FIFO special file.
+    ///
+    /// Note that the archiving of a FIFO file archives the existence of this
+    /// file and not its contents.
     FIFOTYPE = b'6',
-    /// This specifies a contiguous file, which is the same as a normal file except that, in
-    /// operating systems which support it, all its space is allocated contiguously on the disk.
-    /// Operating systems which do not allow contiguous allocation should silently treat this type
-    /// as a normal file.
+    /// Represents a contiguous file.
+    ///
+    /// It is the same as a normal file except that, in operating systems which
+    /// support it, all its space is allocated contiguously on the disk.
+    /// Operating systems which do not allow contiguous allocation should
+    /// silently treat this type as a normal file.
     CONTTYPE = b'7',
     /// POSIX PAX extended header applying to the next entry in the archive.
     XHDTYPE = b'x',
@@ -233,37 +265,49 @@ bitflags::bitflags! {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct PosixHeader {
+    /// Filename without the ustar prefix.
+    ///
+    /// Use [`PosixHeader::filename`] for the full filename.
     pub name: TarFormatString<NAME_LEN>,
+    /// File permissions.
     pub mode: Mode,
+    /// User ID of the owner.
     pub uid: TarFormatOctal<8>,
+    /// Group ID of the owner.
     pub gid: TarFormatOctal<8>,
-    // confusing; size is stored as ASCII string
+    /// Payload size in bytes.
     pub size: TarFormatOctal<12>,
+    /// Modification time in seconds since the Unix epoch.
     pub mtime: TarFormatOctal<12>,
+    /// Checksum of the header.
     pub cksum: TarFormatOctal<8>,
+    /// Type of the entry.
     pub typeflag: TypeFlagRaw,
-    /// Name. There is always a null byte, therefore
-    /// the max len is 99.
+    /// Target of a link entry.
     pub linkname: TarFormatString<NAME_LEN>,
+    /// Format magic, such as `ustar` for ustar archives.
     pub magic: TarFormatString<6>,
+    /// Format version, such as `00` for ustar archives.
     pub version: TarFormatString<2>,
-    /// Username. There is always a null byte, therefore
-    /// the max len is N-1.
+    /// User name of the owner.
     pub uname: TarFormatString<32>,
-    /// Groupname. There is always a null byte, therefore
-    /// the max len is N-1.
+    /// Group name of the owner.
     pub gname: TarFormatString<32>,
+    /// Major device number of a device entry.
     pub dev_major: TarFormatOctal<8>,
+    /// Minor device number of a device entry.
     pub dev_minor: TarFormatOctal<8>,
+    /// Filename prefix of ustar archives.
+    ///
+    /// [`PosixHeader::filename`] joins it with [`PosixHeader::name`].
     pub prefix: TarFormatString<PREFIX_LEN>,
-    // padding => to BLOCKSIZE bytes
+    /// Padding to [`BLOCKSIZE`] bytes.
     pub _pad: [u8; 12],
 }
 
 impl PosixHeader {
     /// Returns the number of blocks that are required to read the whole file
-    /// content. Returns an error, if the file size can't be parsed from the
-    /// header.
+    /// content.
     ///
     /// # Errors
     /// Returns a [`ParseIntError`] error if the size can't be parsed.
@@ -308,12 +352,16 @@ impl PosixHeader {
         filename
     }
 
+    /// Whether the checksum field matches the content of the header.
     pub(crate) fn has_valid_checksum(&self) -> bool {
         self.cksum
             .as_number::<u64>()
             .is_ok_and(|cksum| cksum == self.computed_checksum())
     }
 
+    /// Computes the checksum of the header.
+    ///
+    /// The bytes of the checksum field count as spaces, as the spec requires.
     pub(crate) fn computed_checksum(&self) -> u64 {
         let ptr = &raw const *self;
         let ptr = ptr.cast::<u8>();

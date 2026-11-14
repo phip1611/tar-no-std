@@ -7,9 +7,11 @@ use core::fmt::{Debug, Formatter};
 use core::ptr::copy_nonoverlapping;
 use core::str::{Utf8Error, from_utf8};
 
-/// Base type for strings embedded in a Tar header. The length depends on the
-/// context. The returned string is likely to be UTF-8/ASCII, which is verified
-/// by getters, such as [`TarFormatString::as_str`].
+/// Base type for strings embedded in a Tar header.
+///
+/// The length depends on the context. The returned string is likely to be
+/// UTF-8/ASCII, which is verified by getters, such as
+/// [`TarFormatString::as_str`].
 ///
 /// An optionally null terminated string. The contents are either:
 /// 1. A fully populated string with no null termination or
@@ -17,10 +19,12 @@ use core::str::{Utf8Error, from_utf8};
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatString<const N: usize> {
+    /// Raw bytes, padded with NUL bytes if the string is shorter than `N`.
     bytes: [u8; N],
 }
 
 /// A Tar format string is a fixed length byte array containing UTF-8 bytes.
+///
 /// This string will be null terminated if it doesn't fill the entire array.
 impl<const N: usize> TarFormatString<N> {
     /// Constructor.
@@ -39,16 +43,19 @@ impl<const N: usize> TarFormatString<N> {
         self.bytes[0] == 0
     }
 
-    /// Returns the length of the payload in bytes. This is either the full
-    /// capacity `N` or the data until the first NULL byte.
+    /// Returns the length of the payload in bytes.
+    ///
+    /// This is either the full capacity `N` or the data until the first NULL
+    /// byte.
     #[must_use]
     pub fn size(&self) -> usize {
         self.bytes.iter().position(|&byte| byte == 0).unwrap_or(N)
     }
 
-    /// Returns a str ref without terminating or intermediate NULL bytes. The
-    /// string is truncated at the first NULL byte, in case not the full length
-    /// was used.
+    /// Returns a str ref without terminating or intermediate NULL bytes.
+    ///
+    /// The string is truncated at the first NULL byte, in case not the full
+    /// length was used.
     ///
     /// # Errors
     /// Returns a [`Utf8Error`] error for invalid strings.
@@ -57,9 +64,11 @@ impl<const N: usize> TarFormatString<N> {
     }
 
     /// Wrapper around [`Self::as_str`] that stops as soon as the first space
-    /// is found. This is necessary to properly parse certain Tar-style encoded
-    /// numbers. Some ustar implementations pad spaces which prevents the proper
-    /// parsing as number.
+    /// is found.
+    ///
+    /// This is necessary to properly parse certain Tar-style encoded numbers.
+    /// Some ustar implementations pad spaces which prevents the proper parsing
+    /// as number.
     ///
     /// # Errors
     /// Returns a [`Utf8Error`] error for invalid strings.
@@ -106,12 +115,16 @@ impl<const N: usize> Debug for TarFormatString<N> {
     }
 }
 
-/// A number with a specified base. Trailing spaces in the string are ignored.
+/// A number with a specified base.
+///
+/// Trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatNumber<const N: usize, const R: u32>(TarFormatString<N>);
 
-/// An octal number. Trailing spaces in the string are ignored.
+/// An octal number.
+///
+/// Trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatOctal<const N: usize>(TarFormatNumber<N, 8>);

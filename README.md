@@ -34,8 +34,8 @@ preserving directory paths encoded in their names.
 ## Use Case
 
 This library is useful, if you write a kernel or a similar low-level
-application, which needs "a bunch of files" from an archive (like an
-"init ramdisk"). The Tar file could for example come as a Multiboot2 boot module
+application, which needs "a bunch of files" from an archive (like an "init
+ramdisk"). The Tar file could for example come as a Multiboot2 boot module
 provided by the bootloader.
 
 ## Example
@@ -53,30 +53,11 @@ fn main() {
 }
 ```
 
-## Streaming
+## Documentation
 
-Archives that do not fit into memory can be read block by block with
-`TarStreamReader`, which pulls 512-byte blocks from a source such as a file, a
-flash device, or a network stream, or with `TarStreamParser`, to which you pass
-blocks that are pushed to you, for example by an interrupt. See the
-[documentation on docs.rs](https://docs.rs/tar-no-std/latest/tar_no_std/#streaming)
-for details and examples.
-
-## Cargo Features
-
-This crate allows the usage of the additional Cargo build time feature `alloc`.
-When this is active, the crate also provides the type `TarArchive`, which owns
-the data on the heap.
-
-## Compression (`tar.gz`)
-
-If your Tar file is compressed, e.g. by `.tar.gz`/`gzip`, you need to uncompress
-the bytes first (e.g. by a *gzip* library). Afterwards, this crate can read the
-Tar archive format from the uncompressed bytes.
-
-## MSRV
-
-The MSRV is 1.85.0 stable.
+Archives that do not fit into memory can also be read block by block. See the
+[documentation on docs.rs](https://docs.rs/tar-no-std) for streaming, Cargo
+features, compressed archives, and the MSRV.
 
 ## Fuzzing
 
@@ -85,7 +66,8 @@ test archives as seeds, run:
 
 ```shell
 mkdir -p fuzz/corpus/parse_archive
-cargo +nightly fuzz run parse_archive fuzz/corpus/parse_archive tests -- -max_total_time=60
+cargo +nightly fuzz run parse_archive fuzz/corpus/parse_archive tests \
+  -- -max_total_time=60
 ```
 
 The `parse_valid_archive` target generates structurally valid archives to

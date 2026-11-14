@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 //! Module for [`TarStreamParser`], which parses a Tar archive one block at a
-//! time, without requiring the whole archive in memory. It is also the engine
-//! of [`TarStreamReader`].
+//! time.
+//!
+//! The parser does not require the whole archive in memory. It is also the
+//! engine of [`TarStreamReader`].
 //!
 //! [`TarStreamReader`]: crate::TarStreamReader
 
@@ -11,12 +13,15 @@ use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
 use log::debug;
 
-/// Event returned by [`TarStreamParser::parse_block`]. It borrows the block
-/// that was passed in.
+/// Event returned by [`TarStreamParser::parse_block`].
+///
+/// It borrows the block that was passed in.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum StreamEvent<'a> {
-    /// The block is the header of a regular file. If the file has a payload,
-    /// the next blocks produce [`StreamEvent::Data`] events.
+    /// The block is the header of a regular file.
+    ///
+    /// If the file has a payload, the next blocks produce
+    /// [`StreamEvent::Data`] events.
     Entry {
         /// Header of the file.
         posix_header: &'a PosixHeader,
@@ -28,7 +33,9 @@ pub enum StreamEvent<'a> {
         /// Payload bytes of the block, without the padding.
         data: &'a [u8],
         /// Number of payload bytes of the current file in the following
-        /// blocks. Zero for the last block of the file.
+        /// blocks.
+        ///
+        /// Zero for the last block of the file.
         remaining: usize,
     },
     /// The block is the second zero block that terminates the archive.
@@ -44,8 +51,11 @@ enum State {
     /// The next block holds payload, of an entry that is skipped if `skip`
     /// is set.
     Payload {
+        /// Index of the header of the entry.
         header_block_index: usize,
+        /// Payload bytes of the entry in the next blocks.
         remaining: usize,
+        /// Whether the entry is skipped.
         skip: bool,
     },
     /// The next block must be the second zero block of the terminator.
@@ -89,7 +99,10 @@ enum State {
 ///
 /// impl Unpacker {
 ///     /// Called for every 512-byte block of the archive, as it arrives.
-///     fn on_block(&mut self, block: &[u8; 512]) -> Result<(), CorruptDataError> {
+///     fn on_block(
+///         &mut self,
+///         block: &[u8; 512],
+///     ) -> Result<(), CorruptDataError> {
 ///         match self.parser.parse_block(block)? {
 ///             Some(StreamEvent::Entry { posix_header, size }) => {
 ///                 // For example, create the file.
