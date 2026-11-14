@@ -37,6 +37,16 @@ impl<const N: usize> TarFormatString<N> {
         Self { bytes }
     }
 
+    /// Creates a string from `bytes` up to the first NULL byte.
+    ///
+    /// Returns `None` if the string is longer than `N` bytes.
+    pub(crate) fn from_null_terminated(bytes: &[u8]) -> Option<Self> {
+        let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        let mut str = Self { bytes: [0; N] };
+        str.bytes.get_mut(..len)?.copy_from_slice(&bytes[..len]);
+        Some(str)
+    }
+
     /// True if the is string empty (ignoring NULL bytes).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
@@ -255,6 +265,15 @@ mod tar_format_string_tests {
         let s = TarFormatString::new(*b"Gr\xfc\xdf\0\0");
         assert!(s.as_str().is_err());
         assert_eq!(s.as_bytes(), b"Gr\xfc\xdf");
+    }
+
+    #[test]
+    fn test_from_null_terminated() {
+        let mut bytes = [b'a'; 5];
+        assert!(TarFormatString::<4>::from_null_terminated(&bytes).is_none());
+        bytes[4] = 0;
+        let s = TarFormatString::<4>::from_null_terminated(&bytes).unwrap();
+        assert_eq!(s.as_str(), Ok("aaaa"));
     }
 
     #[test]

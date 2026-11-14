@@ -180,6 +180,14 @@ pub enum TypeFlag {
     XHDTYPE = b'x',
     /// POSIX PAX global extended header applying to following entries.
     XGLTYPE = b'g',
+    /// GNU long name of the next entry.
+    ///
+    /// The payload holds the name, terminated by a NULL-byte.
+    GNULONGNAME = b'L',
+    /// GNU long link name of the next entry.
+    ///
+    /// The payload holds the link target, terminated by a NULL-byte.
+    GNULONGLINK = b'K',
 }
 
 impl TypeFlag {
@@ -207,12 +215,18 @@ impl TypeFlag {
             Self::CONTTYPE => b'7',
             Self::XHDTYPE => b'x',
             Self::XGLTYPE => b'g',
+            Self::GNULONGNAME => b'L',
+            Self::GNULONGLINK => b'K',
         }
     }
 
     /// Whether this entry has payload blocks described by the size field.
     pub(crate) const fn has_payload(self) -> bool {
-        self.is_regular_file() || matches!(self, Self::XHDTYPE | Self::XGLTYPE)
+        self.is_regular_file()
+            || matches!(
+                self,
+                Self::XHDTYPE | Self::XGLTYPE | Self::GNULONGNAME | Self::GNULONGLINK
+            )
     }
 }
 
@@ -232,6 +246,8 @@ impl TryFrom<TypeFlagRaw> for TypeFlag {
             b'7' => Ok(Self::CONTTYPE),
             b'x' => Ok(Self::XHDTYPE),
             b'g' => Ok(Self::XGLTYPE),
+            b'L' => Ok(Self::GNULONGNAME),
+            b'K' => Ok(Self::GNULONGLINK),
             e => Err(InvalidTypeFlagError(e)),
         }
     }
@@ -351,6 +367,13 @@ impl PosixHeader {
 
     /// Returns the filename of the entry, including the ustar prefix if there
     /// is one.
+    ///
+    /// GNU long names are stored in a separate entry before the header, so
+    /// they are not included. [`ArchiveEntry::filename`] and
+    /// [`StreamEntry::filename`] include them.
+    ///
+    /// [`ArchiveEntry::filename`]: crate::ArchiveEntry::filename
+    /// [`StreamEntry::filename`]: crate::StreamEntry::filename
     #[must_use]
     pub fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
         let mut filename =

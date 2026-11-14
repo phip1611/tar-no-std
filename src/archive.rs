@@ -5,9 +5,9 @@
 //! If the `alloc`-feature is enabled, this crate also exports `TarArchive`,
 //! which owns data on the heap.
 
-use crate::header::PosixHeader;
+use crate::header::{PosixHeader, TypeFlag};
 use crate::tar_format_types::TarFormatString;
-use crate::{BLOCKSIZE, POSIX_1003_MAX_FILENAME_LEN};
+use crate::{BLOCKSIZE, MAX_LONG_NAME_PAYLOAD, POSIX_1003_MAX_FILENAME_LEN};
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 use core::fmt::{Debug, Display, Formatter};
@@ -44,7 +44,8 @@ impl<'a> ArchiveEntry<'a> {
         }
     }
 
-    /// Filename of the entry, including the ustar prefix if there is one.
+    /// Filename of the entry, including the ustar prefix or the GNU long name
+    /// if there is one.
     #[must_use]
     pub const fn filename(&self) -> TarFormatString<{ POSIX_1003_MAX_FILENAME_LEN }> {
         self.filename
@@ -119,6 +120,14 @@ pub enum CorruptDataError {
     },
     /// The archive does not end with two zero blocks.
     MissingTerminator,
+    /// The GNU long name at `block_index` is longer than 256 bytes.
+    ///
+    /// The format has no limit, but this crate does not support longer
+    /// names, as it stores them without allocating.
+    FilenameTooLong {
+        /// Index of the header of the long name.
+        block_index: usize,
+    },
 }
 
 impl Display for CorruptDataError {
@@ -143,6 +152,10 @@ impl Display for CorruptDataError {
                 "payload described by header at block {block_index} extends beyond the archive"
             ),
             Self::MissingTerminator => f.write_str("archive does not end with two zero blocks"),
+            Self::FilenameTooLong { block_index } => write!(
+                f,
+                "GNU long name at block {block_index} is longer than {POSIX_1003_MAX_FILENAME_LEN} bytes"
+            ),
         }
     }
 }
@@ -299,16 +312,31 @@ impl<'a> TarArchiveRef<'a> {
             let mut next_block_index = block_index
                 .checked_add(1)
                 .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
+            let mut size = 0;
             if typeflag.has_payload() {
-                let payload_block_count = hdr
-                    .payload_block_count()
+                size = hdr
+                    .size
+                    .as_number::<usize>()
                     .map_err(|_| CorruptDataError::InvalidPayloadSize { block_index })?;
                 next_block_index = next_block_index
-                    .checked_add(payload_block_count)
+                    .checked_add(size.div_ceil(BLOCKSIZE))
                     .ok_or(CorruptDataError::PayloadExtendsBeyondArchive { block_index })?;
+            }
+            // Checked before the payload, like TarStreamParser does.
+            let is_long_name = typeflag == TypeFlag::GNULONGNAME;
+            if is_long_name && size > MAX_LONG_NAME_PAYLOAD {
+                return Err(CorruptDataError::FilenameTooLong { block_index });
             }
             if next_block_index > total_block_count {
                 return Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index });
+            }
+            if is_long_name {
+                let payload = &data[(block_index + 1) * BLOCKSIZE..][..size];
+                if TarFormatString::<POSIX_1003_MAX_FILENAME_LEN>::from_null_terminated(payload)
+                    .is_none()
+                {
+                    return Err(CorruptDataError::FilenameTooLong { block_index });
+                }
             }
             block_index = next_block_index;
         }
@@ -431,42 +459,61 @@ impl<'a> ArchiveEntryIterator<'a> {
     fn next_hdr(&mut self) -> Option<(BlockIndex, &'a PosixHeader)> {
         self.0.next()
     }
+
+    /// Returns the payload of the header at `block_index`.
+    fn payload(&self, block_index: BlockIndex, hdr: &PosixHeader) -> &'a [u8] {
+        let size = hdr
+            .size
+            .as_number::<usize>()
+            .expect("payload size should be valid after successful validation");
+        &self.0.archive_data[(block_index + 1) * BLOCKSIZE..][..size]
+    }
 }
 
 impl<'a> Iterator for ArchiveEntryIterator<'a> {
     type Item = ArchiveEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (mut block_index, mut hdr) = self.next_hdr()?;
+        // GNU long name of the next entry, if there is one.
+        let mut long_name = None;
+        loop {
+            let (block_index, hdr) = self.next_hdr()?;
+            let typeflag = hdr
+                .typeflag
+                .try_to_type_flag()
+                .expect("type flag should be valid after successful validation");
+            if typeflag == TypeFlag::GNULONGNAME {
+                let name = TarFormatString::from_null_terminated(self.payload(block_index, hdr))
+                    .expect("long name should be valid after successful validation");
+                long_name = Some(name);
+                continue;
+            }
+            // Links are skipped, so their long names are not needed.
+            if typeflag == TypeFlag::GNULONGLINK {
+                continue;
+            }
 
-        // Ignore directory entries, i.e. yield only regular files. Works as
-        // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
-        while !hdr.is_regular_file(&hdr.filename()) {
-            debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
+            // Ignore directory entries, i.e. yield only regular files. Works
+            // as filenames in tarballs are fully specified, e.g. dirA/dirB/file1
+            let filename = long_name.take().unwrap_or_else(|| hdr.filename());
+            if !hdr.is_regular_file(&filename) {
+                debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
+                continue;
+            }
 
-            // Update properties.
-            (block_index, hdr) = self.next_hdr()?;
+            return Some(ArchiveEntry::new(
+                filename,
+                self.payload(block_index, hdr),
+                hdr,
+            ));
         }
-
-        let payload_size: usize = hdr
-            .size
-            .as_number()
-            .expect("payload size should be valid after successful validation");
-
-        let idx_first_data_block = block_index + 1;
-        let idx_begin = idx_first_data_block * BLOCKSIZE;
-        let idx_end_exclusive = idx_begin + payload_size;
-
-        let file_bytes = &self.0.archive_data[idx_begin..idx_end_exclusive];
-
-        Some(ArchiveEntry::new(hdr.filename(), file_bytes, hdr))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{TYPEFLAG_OFFSET, TarFormatOctal, TypeFlag};
+    use crate::{TYPEFLAG_OFFSET, TarFormatOctal};
     use std::vec::Vec;
 
     #[test]
@@ -804,6 +851,38 @@ mod tests {
         let archive = TarArchiveRef::new(data.as_slice()).unwrap();
         let entry = archive.entries().next().unwrap();
         assert_eq!(entry.filename().as_str(), Ok("tests/hello_world.txt"));
+    }
+
+    /// Tests an archive with GNU long names for two directories and a file,
+    /// and a GNU long link name for a symlink.
+    ///
+    /// The archives with long names were created with GNU tar 1.35:
+    /// `tar --format=gnu --owner=0 --group=0 --numeric-owner --mtime=@0
+    /// --sort=name -b1 -cf <archive> .`
+    #[test]
+    fn test_gnu_long_names() {
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_gnu_long_names.tar")).unwrap();
+        let long_name = format!("./{0}/{0}/long_name.txt", "d".repeat(48));
+        let entries = archive
+            .entries()
+            .map(|entry| (entry.filename(), entry.data_as_str().unwrap()))
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].0.as_str(), Ok(long_name.as_str()));
+        assert_eq!(entries[0].1, "long name\n");
+        // The long link name of the symlink in between is not applied.
+        assert_eq!(entries[1].0.as_str(), Ok("./short.txt"));
+        assert_eq!(entries[1].1, "short\n");
+    }
+
+    #[test]
+    fn test_rejects_too_long_gnu_long_name() {
+        // The 303 bytes long name of the file is at block 7.
+        assert_eq!(
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_gnu_too_long_name.tar")),
+            Err(CorruptDataError::FilenameTooLong { block_index: 7 })
+        );
     }
 
     #[test]

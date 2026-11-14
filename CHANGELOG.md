@@ -32,6 +32,12 @@
   implementations, are now accepted.
 - Regular files whose name ends with a slash are now skipped as directories,
   like GNU tar does. Old Tar versions wrote directories this way.
+- Added support for GNU long names (type flag `L`) of up to 256 bytes, which
+  GNU tar writes by default for paths longer than 100 characters. Such
+  archives were rejected before. Longer names are rejected with the new
+  `CorruptDataError::FilenameTooLong`. GNU long link names (type flag `K`) are
+  skipped. `StreamEvent::Entry` has a new `filename` field that includes the
+  long name.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
