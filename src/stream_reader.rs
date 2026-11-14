@@ -146,10 +146,8 @@ enum State {
 ///
 /// Unlike [`TarArchiveRef`], the archive does not need to be in memory: the
 /// reader only keeps the current block and the header of the current file,
-/// about 1 KiB. It validates the archive like [`TarArchiveRef::new`] does,
-/// except that it does not require [`MIN_BLOCK_COUNT`] blocks: two zero
-/// blocks are a valid empty archive. Like [`TarArchiveRef::entries`], it
-/// only reports regular files.
+/// about 1 KiB. It validates the archive like [`TarArchiveRef::new`] does
+/// and, like [`TarArchiveRef::entries`], only reports regular files.
 ///
 /// Payload that was not read is skipped by the next call to
 /// [`TarStreamReader::next_entry`].
@@ -189,7 +187,6 @@ enum State {
 /// [`TarArchiveRef`]: crate::TarArchiveRef
 /// [`TarArchiveRef::new`]: crate::TarArchiveRef::new
 /// [`TarArchiveRef::entries`]: crate::TarArchiveRef::entries
-/// [`MIN_BLOCK_COUNT`]: crate::MIN_BLOCK_COUNT
 pub struct TarStreamReader<S> {
     /// Source of the blocks.
     source: S,
@@ -246,9 +243,7 @@ impl<S: BlockSource> TarStreamReader<S> {
     /// # Errors
     /// Returns [`StreamError::Source`] if the source cannot be read and
     /// [`StreamError::Corrupt`] if the archive is invalid or incomplete.
-    pub fn next_entry(
-        &mut self,
-    ) -> Result<Option<StreamReaderEntry<'_, S>>, StreamError<S::Error>> {
+    pub fn next_entry(&mut self) -> Result<Option<StreamEntry<'_, S>>, StreamError<S::Error>> {
         if self.state == State::End {
             return Ok(None);
         }
@@ -263,7 +258,7 @@ impl<S: BlockSource> TarStreamReader<S> {
                     self.remaining = size;
                     self.pos = 0;
                     self.len = 0;
-                    return Ok(Some(StreamReaderEntry { reader: self }));
+                    return Ok(Some(StreamEntry { reader: self }));
                 }
                 Some(StreamEvent::End) => return Ok(None),
                 Some(StreamEvent::Data { .. }) | None => {}
@@ -306,20 +301,20 @@ impl<S: BlockSource> TarStreamReader<S> {
 }
 
 /// Regular file returned by [`TarStreamReader::next_entry`].
-pub struct StreamReaderEntry<'a, S> {
+pub struct StreamEntry<'a, S> {
     reader: &'a mut TarStreamReader<S>,
 }
 
-impl<S> Debug for StreamReaderEntry<'_, S> {
+impl<S> Debug for StreamEntry<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("StreamReaderEntry")
+        f.debug_struct("StreamEntry")
             .field("filename", &self.filename().as_str())
             .field("size", &self.size())
             .finish_non_exhaustive()
     }
 }
 
-impl<S> StreamReaderEntry<'_, S> {
+impl<S> StreamEntry<'_, S> {
     /// Returns the [`PosixHeader`] of the file.
     #[must_use]
     pub const fn posix_header(&self) -> &PosixHeader {
@@ -339,7 +334,7 @@ impl<S> StreamReaderEntry<'_, S> {
     }
 }
 
-impl<S: BlockSource> StreamReaderEntry<'_, S> {
+impl<S: BlockSource> StreamEntry<'_, S> {
     /// Reads payload bytes of the file into `buf` and returns how many bytes
     /// were read, like [`std::io::Read::read`]. Returns `0` once the whole
     /// payload was read, or if `buf` is empty.

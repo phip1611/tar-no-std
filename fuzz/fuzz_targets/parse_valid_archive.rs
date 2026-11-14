@@ -5,11 +5,10 @@
 use core::ops::Range;
 
 use libfuzzer_sys::fuzz_target;
-use tar_no_std::TarArchiveRef;
+use tar_no_std::{BLOCKSIZE, TarArchiveRef};
 
 mod exercise;
 
-const BLOCK_SIZE: usize = 512;
 const CHECKSUM: Range<usize> = 148..156;
 const TYPE_FLAG: usize = 156;
 const MAX_ENTRIES: usize = 4;
@@ -128,12 +127,12 @@ fn build_archive(data: &[u8]) -> Vec<u8> {
         append_entry(&mut archive, &entry);
     }
 
-    archive.resize(archive.len() + 2 * BLOCK_SIZE, 0);
+    archive.resize(archive.len() + 2 * BLOCKSIZE, 0);
     archive
 }
 
 fn append_entry(archive: &mut Vec<u8>, entry: &Entry<'_>) {
-    let mut header = [0; BLOCK_SIZE];
+    let mut header = [0; BLOCKSIZE];
     if !entry.metadata.is_empty() {
         for (byte, value) in header.iter_mut().zip(entry.metadata.iter().cycle()) {
             *byte = *value;
@@ -160,7 +159,7 @@ fn append_entry(archive: &mut Vec<u8>, entry: &Entry<'_>) {
     archive.extend_from_slice(&header);
     if entry.kind.has_payload() {
         archive.extend_from_slice(entry.payload);
-        let padding = archive.len().next_multiple_of(BLOCK_SIZE) - archive.len();
+        let padding = archive.len().next_multiple_of(BLOCKSIZE) - archive.len();
         archive.resize(archive.len() + padding, 0);
     }
 }

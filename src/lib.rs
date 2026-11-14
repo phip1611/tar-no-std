@@ -96,8 +96,8 @@
 //! // Each block would be delivered by a callback.
 //! for block in archive.chunks_exact(512) {
 //!     match parser.parse_block(block.try_into().unwrap()).unwrap() {
-//!         Some(StreamEvent::Entry { header, size }) => {
-//!             println!("{:?} ({size} bytes)", header.filename());
+//!         Some(StreamEvent::Entry { posix_header, size }) => {
+//!             println!("{:?} ({size} bytes)", posix_header.filename());
 //!         }
 //!         Some(StreamEvent::Data { data, .. }) => println!("  {} bytes", data.len()),
 //!         Some(StreamEvent::End) | None => {}
@@ -141,8 +141,9 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-/// Each Archive Entry (either Header or Data Block) is a block of 512 bytes.
-const BLOCKSIZE: usize = 512;
+/// Size of a Tar block in bytes. A Tar archive is a sequence of such blocks,
+/// each holding either a header or payload.
+pub const BLOCKSIZE: usize = 512;
 /// Maximum filename length of the base Tar format including the terminating NULL-byte.
 const NAME_LEN: usize = 100;
 /// Maximum long filename length of the base Tar format including the prefix
