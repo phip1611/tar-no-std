@@ -15,6 +15,8 @@
 - `TarArchiveRef::new` and `TarArchive::new` now accept an empty archive that
   only consists of the two terminating zero blocks. `MIN_BLOCK_COUNT` is now 2
   instead of 3.
+- `TarArchive` now implements `TryFrom<Box<[u8]>>` instead of
+  `From<Box<[u8]>>`, which panicked for invalid archives.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

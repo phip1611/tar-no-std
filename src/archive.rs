@@ -212,11 +212,11 @@ impl TarArchive {
 }
 
 #[cfg(feature = "alloc")]
-// TODO impl TryFrom
-#[expect(clippy::fallible_impl_from)]
-impl From<Box<[u8]>> for TarArchive {
-    fn from(data: Box<[u8]>) -> Self {
-        Self::new(data).unwrap()
+impl TryFrom<Box<[u8]>> for TarArchive {
+    type Error = CorruptDataError;
+
+    fn try_from(data: Box<[u8]>) -> Result<Self, Self::Error> {
+        Self::new(data)
     }
 }
 
@@ -516,6 +516,10 @@ mod tests {
                 Err(CorruptDataError::InvalidBlockSize)
             );
             assert!(TarArchive::new(vec![0; BLOCKSIZE * MIN_BLOCK_COUNT].into_boxed_slice()).is_ok());
+            assert_eq!(
+                TarArchive::try_from(vec![0].into_boxed_slice()),
+                Err(CorruptDataError::InvalidBlockSize)
+            );
         };
     }
 
