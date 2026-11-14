@@ -25,16 +25,15 @@
 //! such as high-precision timestamps. PAX headers and their metadata are
 //! skipped; the following regular-file headers provide the filenames and sizes.
 //!
-//! Archives that rely on unsupported extensions do not work. Archives with GNU
-//! extension entries, such as long names, sparse files, or incremental dumps,
-//! are rejected with [`CorruptDataError::InvalidTypeFlag`]. GNU tar's default
-//! format uses such a long-name entry for every path longer than 100
-//! characters. PAX records are skipped, so paths and file sizes that only exist
-//! in PAX records are not applied. The maximum supported filename length is 256
-//! characters excluding the NULL-byte, and the maximum supported file size is
-//! 8GiB. Directories, links, and other special entries are skipped; iteration
-//! yields only regular files, preserving directory paths encoded in their
-//! names.
+//! Archives that rely on unsupported extensions do not work. GNU long names are
+//! supported, and other vendor entries, such as GNU incremental dumps or volume
+//! labels, are skipped. GNU sparse files are rejected with
+//! [`CorruptDataError::InvalidTypeFlag`]. PAX records are skipped, so paths and
+//! file sizes that only exist in PAX records are not applied. The maximum
+//! supported filename length is 256 characters excluding the NULL-byte, and the
+//! maximum supported file size is 8GiB. Directories, links, and other special
+//! entries are skipped; iteration yields only regular files, preserving
+//! directory paths encoded in their names.
 //!
 //! ## Use Case
 //!
@@ -102,8 +101,8 @@
 //! // Each block would be delivered by a callback.
 //! for block in archive.chunks_exact(512) {
 //!     match parser.parse_block(block.try_into().unwrap()).unwrap() {
-//!         Some(StreamEvent::Entry { posix_header, size }) => {
-//!             println!("{:?} ({size} bytes)", posix_header.filename());
+//!         Some(StreamEvent::Entry { filename, size, .. }) => {
+//!             println!("{filename:?} ({size} bytes)");
 //!         }
 //!         Some(StreamEvent::Data { data, .. }) => {
 //!             println!("  {} bytes", data.len());
@@ -159,8 +158,19 @@ pub const BLOCKSIZE: usize = 512;
 const NAME_LEN: usize = 100;
 /// Maximum long filename length of the base Tar format including the prefix.
 const POSIX_1003_MAX_FILENAME_LEN: usize = 256;
+/// Maximum payload size of a GNU long name entry that this crate supports.
+///
+/// The format has no limit, but this crate stores the name in a buffer of
+/// [`POSIX_1003_MAX_FILENAME_LEN`] bytes, as it does not allocate. The payload
+/// is the name and its terminating NULL-byte.
+const MAX_LONG_NAME_PAYLOAD: usize = POSIX_1003_MAX_FILENAME_LEN + 1;
 /// Maximum length of the prefix in Posix tar format.
 const PREFIX_LEN: usize = 155;
+/// Offset of the type flag in a header block.
+///
+/// Tests overwrite it to create entries of other types.
+#[cfg(test)]
+const TYPEFLAG_OFFSET: usize = core::mem::offset_of!(PosixHeader, typeflag);
 
 mod archive;
 mod header;

@@ -21,15 +21,15 @@ as well as PAX archives that use extended records only for optional metadata
 such as high-precision timestamps. PAX headers and their metadata are skipped;
 the following regular-file headers provide the filenames and sizes.
 
-Archives that rely on unsupported extensions do not work. Archives with GNU
-extension entries, such as long names, sparse files, or incremental dumps, are
-rejected with `CorruptDataError::InvalidTypeFlag`. GNU tar's default format uses
-such a long-name entry for every path longer than 100 characters. PAX records
-are skipped, so paths and file sizes that only exist in PAX records are not
-applied. The maximum supported filename length is 256 characters excluding the
-NULL-byte, and the maximum supported file size is 8GiB. Directories, links, and
-other special entries are skipped; iteration yields only regular files,
-preserving directory paths encoded in their names.
+Archives that rely on unsupported extensions do not work. GNU long names are
+supported, and other vendor entries, such as GNU incremental dumps or volume
+labels, are skipped. GNU sparse files are rejected with
+`CorruptDataError::InvalidTypeFlag`. PAX records are skipped, so paths and file
+sizes that only exist in PAX records are not applied. The maximum supported
+filename length is 256 characters excluding the NULL-byte, and the maximum
+supported file size is 8GiB. Directories, links, and other special entries are
+skipped; iteration yields only regular files, preserving directory paths encoded
+in their names.
 
 ## Use Case
 

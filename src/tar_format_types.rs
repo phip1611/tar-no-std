@@ -37,6 +37,16 @@ impl<const N: usize> TarFormatString<N> {
         Self { bytes }
     }
 
+    /// Creates a string from `bytes` up to the first NULL byte.
+    ///
+    /// Returns `None` if the string is longer than `N` bytes.
+    pub(crate) fn from_null_terminated(bytes: &[u8]) -> Option<Self> {
+        let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        let mut str = Self { bytes: [0; N] };
+        str.bytes.get_mut(..len)?.copy_from_slice(&bytes[..len]);
+        Some(str)
+    }
+
     /// True if the is string empty (ignoring NULL bytes).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
@@ -50,6 +60,15 @@ impl<const N: usize> TarFormatString<N> {
     #[must_use]
     pub fn size(&self) -> usize {
         self.bytes.iter().position(|&byte| byte == 0).unwrap_or(N)
+    }
+
+    /// Returns the bytes of the string without the NULL padding.
+    ///
+    /// Unlike [`Self::as_str`], this also works for strings that are not
+    /// valid UTF-8, such as Latin-1 filenames.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..self.size()]
     }
 
     /// Returns a str ref without terminating or intermediate NULL bytes.
@@ -117,14 +136,14 @@ impl<const N: usize> Debug for TarFormatString<N> {
 
 /// A number with a specified base.
 ///
-/// Trailing spaces in the string are ignored.
+/// Leading and trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatNumber<const N: usize, const R: u32>(TarFormatString<N>);
 
 /// An octal number.
 ///
-/// Trailing spaces in the string are ignored.
+/// Leading and trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatOctal<const N: usize>(TarFormatNumber<N, 8>);
@@ -154,8 +173,11 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     where
         T: num_traits::Num,
     {
-        let str = self.0.as_str_until_first_space().unwrap_or("");
-        T::from_str_radix(str, R)
+        // Some Tar implementations right-align numbers with leading spaces,
+        // and others terminate them with a space.
+        let str = self.0.as_str().unwrap_or("").trim_start_matches(' ');
+        let end = str.find(' ').unwrap_or(str.len());
+        T::from_str_radix(&str[..end], R)
     }
 
     /// Returns the underlying [`TarFormatString`].
@@ -238,6 +260,23 @@ mod tar_format_string_tests {
     }
 
     #[test]
+    fn test_as_bytes_without_utf8() {
+        // "Grüß" in Latin-1.
+        let s = TarFormatString::new(*b"Gr\xfc\xdf\0\0");
+        assert!(s.as_str().is_err());
+        assert_eq!(s.as_bytes(), b"Gr\xfc\xdf");
+    }
+
+    #[test]
+    fn test_from_null_terminated() {
+        let mut bytes = [b'a'; 5];
+        assert!(TarFormatString::<4>::from_null_terminated(&bytes).is_none());
+        bytes[4] = 0;
+        let s = TarFormatString::<4>::from_null_terminated(&bytes).unwrap();
+        assert_eq!(s.as_str(), Ok("aaaa"));
+    }
+
+    #[test]
     fn test_str_until_first_space() {
         let s = TarFormatString::new(*b"AB X\0");
         assert_eq!(size_of_val(&s), 5);
@@ -306,6 +345,12 @@ mod tar_format_number_tests {
         let str = [b'0', b'1', b'0', b' ', 0];
         let str = TarFormatNumber::<5, 10>::new(str);
         assert_eq!(str.as_number::<u64>(), Ok(10));
+    }
+
+    #[test]
+    fn test_as_number_with_leading_spaces() {
+        let str = TarFormatNumber::<8, 8>::new(*b"  1234\0 ");
+        assert_eq!(str.as_number::<u64>(), Ok(0o1234));
     }
 
     #[test]

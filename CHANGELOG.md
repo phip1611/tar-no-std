@@ -26,6 +26,22 @@
   of being skipped, as the Tar spec requires.
 - `ArchiveEntry::posix_header` now returns a reference that borrows the
   archive instead of the entry, like `ArchiveEntry::data`.
+- Added `TarFormatString::as_bytes` to read strings that are not valid UTF-8,
+  such as Latin-1 filenames.
+- Numeric header fields with leading spaces, as written by some old Tar
+  implementations, are now accepted.
+- Regular files whose name ends with a slash are now skipped as directories,
+  like GNU tar does. Old Tar versions wrote directories this way.
+- Added support for GNU long names (type flag `L`) of up to 256 bytes, which
+  GNU tar writes by default for paths longer than 100 characters. Such
+  archives were rejected before. Longer names are rejected with the new
+  `CorruptDataError::FilenameTooLong`. GNU long link names (type flag `K`) are
+  skipped. `StreamEvent::Entry` has a new `filename` field that includes the
+  long name.
+- Entries with vendor type flags (`A` to `Z`), such as GNU incremental dumps
+  or volume labels, are now skipped instead of rejected, like GNU tar does.
+  They are reported as `TypeFlag::VENDOR` and `TypeFlag::GNUVOLHDR`. GNU
+  sparse files (`S`) are still rejected.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

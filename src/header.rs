@@ -18,11 +18,12 @@ use crate::{
 };
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
+use core::mem::offset_of;
 use core::num::ParseIntError;
 use core::{error, fmt, slice};
 
 /// Offset of the checksum field in the header.
-const CKSUM_OFFSET: usize = 148;
+const CKSUM_OFFSET: usize = offset_of!(PosixHeader, cksum);
 /// Length of the checksum field in bytes.
 const CKSUM_LEN: usize = 8;
 
@@ -179,6 +180,26 @@ pub enum TypeFlag {
     XHDTYPE = b'x',
     /// POSIX PAX global extended header applying to following entries.
     XGLTYPE = b'g',
+    /// GNU long name of the next entry.
+    ///
+    /// The payload holds the name, terminated by a NULL-byte.
+    GNULONGNAME = b'L',
+    /// GNU long link name of the next entry.
+    ///
+    /// The payload holds the link target, terminated by a NULL-byte.
+    GNULONGLINK = b'K',
+    /// GNU volume label, written by `tar --label`.
+    ///
+    /// It has no payload.
+    GNUVOLHDR = b'V',
+    /// Entry of a vendor-specific type from `A` to `Z`, as reserved by POSIX.
+    ///
+    /// Examples are GNU incremental dumps (`D`) and multi-volume continuations
+    /// (`M`), and Solaris extended headers (`X`). The payload is described by
+    /// the size field. GNU sparse files (`S`) are not included: their size
+    /// field does not describe all of their blocks, so they cannot be skipped
+    /// and are rejected.
+    VENDOR(u8),
 }
 
 impl TypeFlag {
@@ -191,9 +212,39 @@ impl TypeFlag {
         matches!(self, Self::REGTYPE | Self::AREGTYPE | Self::CONTTYPE)
     }
 
+    /// Returns the type flag as it is stored in the header.
+    #[cfg(test)]
+    pub(crate) const fn to_byte(self) -> u8 {
+        match self {
+            Self::REGTYPE => b'0',
+            Self::AREGTYPE => b'\0',
+            Self::LINK => b'1',
+            Self::SYMTYPE => b'2',
+            Self::CHRTYPE => b'3',
+            Self::BLKTYPE => b'4',
+            Self::DIRTYPE => b'5',
+            Self::FIFOTYPE => b'6',
+            Self::CONTTYPE => b'7',
+            Self::XHDTYPE => b'x',
+            Self::XGLTYPE => b'g',
+            Self::GNULONGNAME => b'L',
+            Self::GNULONGLINK => b'K',
+            Self::GNUVOLHDR => b'V',
+            Self::VENDOR(byte) => byte,
+        }
+    }
+
     /// Whether this entry has payload blocks described by the size field.
     pub(crate) const fn has_payload(self) -> bool {
-        self.is_regular_file() || matches!(self, Self::XHDTYPE | Self::XGLTYPE)
+        self.is_regular_file()
+            || matches!(
+                self,
+                Self::XHDTYPE
+                    | Self::XGLTYPE
+                    | Self::GNULONGNAME
+                    | Self::GNULONGLINK
+                    | Self::VENDOR(_)
+            )
     }
 }
 
@@ -213,6 +264,11 @@ impl TryFrom<TypeFlagRaw> for TypeFlag {
             b'7' => Ok(Self::CONTTYPE),
             b'x' => Ok(Self::XHDTYPE),
             b'g' => Ok(Self::XGLTYPE),
+            b'L' => Ok(Self::GNULONGNAME),
+            b'K' => Ok(Self::GNULONGLINK),
+            b'V' => Ok(Self::GNUVOLHDR),
+            b'S' => Err(InvalidTypeFlagError(b'S')),
+            vendor @ b'A'..=b'Z' => Ok(Self::VENDOR(vendor)),
             e => Err(InvalidTypeFlagError(e)),
         }
     }
@@ -332,6 +388,13 @@ impl PosixHeader {
 
     /// Returns the filename of the entry, including the ustar prefix if there
     /// is one.
+    ///
+    /// GNU long names are stored in a separate entry before the header, so
+    /// they are not included. [`ArchiveEntry::filename`] and
+    /// [`StreamEntry::filename`] include them.
+    ///
+    /// [`ArchiveEntry::filename`]: crate::ArchiveEntry::filename
+    /// [`StreamEntry::filename`]: crate::StreamEntry::filename
     #[must_use]
     pub fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
         let mut filename =
@@ -350,6 +413,22 @@ impl PosixHeader {
         }
         filename.append(&self.name);
         filename
+    }
+
+    /// Whether the entry with `filename` is a regular file.
+    ///
+    /// Like GNU tar, this treats a regular file whose name ends with a slash
+    /// as a directory, as old Tar versions wrote directories this way. The
+    /// `filename` must be the complete one, as the name in the header may be
+    /// cut off after a slash.
+    pub(crate) fn is_regular_file(
+        &self,
+        filename: &TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
+    ) -> bool {
+        self.typeflag
+            .try_to_type_flag()
+            .is_ok_and(TypeFlag::is_regular_file)
+            && !filename.as_bytes().ends_with(b"/")
     }
 
     /// Whether the checksum field matches the content of the header.
@@ -398,7 +477,7 @@ impl PosixHeader {
 #[cfg(test)]
 mod tests {
     use crate::BLOCKSIZE;
-    use crate::header::{PosixHeader, TypeFlag};
+    use crate::header::{PosixHeader, TypeFlag, TypeFlagRaw};
     use std::mem::size_of;
 
     /// Returns the [`PosixHeader`] at the beginning of the Tar archive.
@@ -412,6 +491,15 @@ mod tests {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
         println!("{archive:#?}'");
+    }
+
+    #[test]
+    fn test_type_flag_to_byte() {
+        for byte in 0..=u8::MAX {
+            if let Ok(type_flag) = TypeFlagRaw(byte).try_to_type_flag() {
+                assert_eq!(type_flag.to_byte(), byte);
+            }
+        }
     }
 
     #[test]

@@ -8,15 +8,20 @@
 //!
 //! [`TarStreamReader`]: crate::TarStreamReader
 
-use crate::BLOCKSIZE;
 use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
+use crate::tar_format_types::TarFormatString;
+use crate::{BLOCKSIZE, MAX_LONG_NAME_PAYLOAD, POSIX_1003_MAX_FILENAME_LEN};
 use log::debug;
 
 /// Event returned by [`TarStreamParser::parse_block`].
 ///
 /// It borrows the block that was passed in.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Boxing needs an allocator, and events are short-lived return values"
+)]
 pub enum StreamEvent<'a> {
     /// The block is the header of a regular file.
     ///
@@ -25,6 +30,9 @@ pub enum StreamEvent<'a> {
     Entry {
         /// Header of the file.
         posix_header: &'a PosixHeader,
+        /// Filename, including the ustar prefix or the GNU long name if there
+        /// is one.
+        filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
         /// Size of the file in bytes.
         size: usize,
     },
@@ -58,6 +66,16 @@ enum State {
         /// Whether the entry is skipped.
         skip: bool,
     },
+    /// The next block holds the payload of a GNU long name entry.
+    ///
+    /// The payload fits into one block, as it is at most
+    /// [`MAX_LONG_NAME_PAYLOAD`] bytes.
+    LongName {
+        /// Index of the header of the long name.
+        header_block_index: usize,
+        /// Size of the payload in bytes.
+        size: usize,
+    },
     /// The next block must be the second zero block of the terminator.
     FirstZeroBlock,
     /// The terminator was read, so the next blocks are ignored.
@@ -73,9 +91,9 @@ enum State {
 /// for the next block. If you can, [`TarStreamReader`] is simpler: it pulls
 /// the blocks itself and takes care of the payload and the end of the archive.
 ///
-/// The parser only keeps a few words of state. It validates each header like
-/// [`TarArchiveRef::new`] does: checksums, type flags, payload sizes, and the
-/// double-zero terminator.
+/// The parser keeps less than 300 bytes of state, most of it for a GNU long
+/// name. It validates each header like [`TarArchiveRef::new`] does:
+/// checksums, type flags, payload sizes, and the double-zero terminator.
 ///
 /// Like [`ArchiveEntryIterator`], only regular files are reported.
 /// Directories, links, PAX extended headers, and other special entries are
@@ -104,9 +122,9 @@ enum State {
 ///         block: &[u8; 512],
 ///     ) -> Result<(), CorruptDataError> {
 ///         match self.parser.parse_block(block)? {
-///             Some(StreamEvent::Entry { posix_header, size }) => {
+///             Some(StreamEvent::Entry { filename, size, .. }) => {
 ///                 // For example, create the file.
-///                 println!("{:?} ({size} bytes)", posix_header.filename());
+///                 println!("{filename:?} ({size} bytes)");
 ///                 self.files += 1;
 ///             }
 ///             Some(StreamEvent::Data { data, remaining }) => {
@@ -146,6 +164,8 @@ pub struct TarStreamParser {
     state: State,
     /// Index of the next block in the archive.
     block_index: usize,
+    /// GNU long name of the next entry, if there is one.
+    long_name: Option<TarFormatString<POSIX_1003_MAX_FILENAME_LEN>>,
 }
 
 impl TarStreamParser {
@@ -155,6 +175,7 @@ impl TarStreamParser {
         Self {
             state: State::Header,
             block_index: 0,
+            long_name: None,
         }
     }
 
@@ -189,6 +210,19 @@ impl TarStreamParser {
         match self.state {
             State::Failed(error) => Err(error),
             State::End => Ok(None),
+            State::LongName {
+                header_block_index,
+                size,
+            } => {
+                let name = TarFormatString::from_null_terminated(&block[..size]).ok_or(
+                    CorruptDataError::FilenameTooLong {
+                        block_index: header_block_index,
+                    },
+                )?;
+                self.long_name = Some(name);
+                self.state = State::Header;
+                Ok(None)
+            }
             State::FirstZeroBlock => {
                 if PosixHeader::from_block(block, 0).is_zero_block() {
                     self.state = State::End;
@@ -227,8 +261,23 @@ impl TarStreamParser {
                     self.state = State::FirstZeroBlock;
                     return Ok(None);
                 }
-                let (type_flag, size) = parse_header(block_index, hdr)?;
-                let skip = !type_flag.is_regular_file();
+                let (typeflag, size) = parse_header(block_index, hdr)?;
+                if typeflag == TypeFlag::GNULONGNAME {
+                    if size > MAX_LONG_NAME_PAYLOAD {
+                        return Err(CorruptDataError::FilenameTooLong { block_index });
+                    }
+                    if size == 0 {
+                        self.long_name = TarFormatString::from_null_terminated(&[]);
+                    } else {
+                        self.state = State::LongName {
+                            header_block_index: block_index,
+                            size,
+                        };
+                    }
+                    return Ok(None);
+                }
+                let filename = self.long_name.unwrap_or_else(|| hdr.filename());
+                let skip = !hdr.is_regular_file(&filename);
                 if size > 0 {
                     self.state = State::Payload {
                         header_block_index: block_index,
@@ -237,11 +286,18 @@ impl TarStreamParser {
                     };
                 }
                 if skip {
-                    debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
+                    // Links are skipped, so their long names are not needed,
+                    // but the long name of the entry after them is.
+                    if typeflag != TypeFlag::GNULONGLINK {
+                        debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
+                        self.long_name = None;
+                    }
                     return Ok(None);
                 }
+                self.long_name = None;
                 Ok(Some(StreamEvent::Entry {
                     posix_header: hdr,
+                    filename,
                     size,
                 }))
             }
@@ -259,6 +315,9 @@ impl TarStreamParser {
             State::End => Ok(()),
             State::Failed(error) => Err(error),
             State::Payload {
+                header_block_index, ..
+            }
+            | State::LongName {
                 header_block_index, ..
             } => Err(CorruptDataError::PayloadExtendsBeyondArchive {
                 block_index: header_block_index,
@@ -295,7 +354,7 @@ fn parse_header(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TarArchiveRef;
+    use crate::{TYPEFLAG_OFFSET, TarArchiveRef};
     use std::string::{String, ToString};
     use std::vec::Vec;
 
@@ -316,7 +375,11 @@ mod tests {
         let mut entries: Vec<ParsedEntry> = Vec::new();
         for (block_index, block) in blocks(data).enumerate() {
             match parser.parse_block(block)? {
-                Some(StreamEvent::Entry { posix_header, size }) => {
+                Some(StreamEvent::Entry {
+                    posix_header,
+                    filename,
+                    size,
+                }) => {
                     assert!(
                         posix_header
                             .typeflag
@@ -326,7 +389,7 @@ mod tests {
                     );
                     entries.push(ParsedEntry {
                         block_index,
-                        filename: posix_header.filename().as_str().unwrap().to_string(),
+                        filename: filename.as_str().unwrap().to_string(),
                         data: Vec::with_capacity(size),
                     });
                 }
@@ -386,6 +449,8 @@ mod tests {
             include_bytes!("../tests/gnu_tar_ustar_deep.tar"),
             include_bytes!("../tests/gnu_tar_ustar_long.tar"),
             include_bytes!("../tests/gnu_tar_v7.tar"),
+            include_bytes!("../tests/gnu_tar_gnu_long_names.tar"),
+            include_bytes!("../tests/gnu_tar_gnu_label.tar"),
             include_bytes!("../tests/mac_tar_ustar_with_dir.tar"),
             include_bytes!("../tests/weird_fuzzing_tarballs.tar"),
         ] {
@@ -397,12 +462,49 @@ mod tests {
     fn test_stream_reports_contiguous_file() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
         let mut block = header_block(&data);
-        block[156] = b'7';
+        block[TYPEFLAG_OFFSET] = TypeFlag::CONTTYPE.to_byte();
         write_checksum(&mut block);
         data[..BLOCKSIZE].copy_from_slice(&block);
 
         let files = parse_files(&data);
         assert_eq!(files[0].0, "bye_world_513b.txt");
+        assert_eq!(files, archive_entries(&data));
+    }
+
+    #[test]
+    fn test_stream_skips_old_style_directories() {
+        let mut data = include_bytes!("../tests/gnu_tar_default_with_dir.tar").to_vec();
+        let mut block = header_block(&data);
+        // Turn the directory "tests/" into a regular file of an old archive,
+        // which marks a directory by its trailing slash.
+        block[TYPEFLAG_OFFSET] = TypeFlag::AREGTYPE.to_byte();
+        write_checksum(&mut block);
+        data[..BLOCKSIZE].copy_from_slice(&block);
+
+        let files = parse_files(&data);
+        assert_eq!(files[0].0, "tests/hello_world.txt");
+        assert_eq!(files, archive_entries(&data));
+    }
+
+    #[test]
+    fn test_stream_rejects_too_long_gnu_long_name() {
+        assert_eq!(
+            parse_streaming(include_bytes!("../tests/gnu_tar_gnu_too_long_name.tar")),
+            Err(CorruptDataError::FilenameTooLong { block_index: 7 })
+        );
+    }
+
+    #[test]
+    fn test_stream_skips_vendor_entries() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        let mut block = header_block(&data);
+        // Vendor-specific entry.
+        block[TYPEFLAG_OFFSET] = b'I';
+        write_checksum(&mut block);
+        data[..BLOCKSIZE].copy_from_slice(&block);
+
+        let files = parse_files(&data);
+        assert_eq!(files[0].0, "hello_world_513b.txt");
         assert_eq!(files, archive_entries(&data));
     }
 
@@ -447,6 +549,7 @@ mod tests {
             parser.parse_block(block),
             Ok(Some(StreamEvent::Entry {
                 posix_header: PosixHeader::from_block(block, 0),
+                filename: PosixHeader::from_block(block, 0).filename(),
                 size: 513
             }))
         );
@@ -470,8 +573,8 @@ mod tests {
         let block = blocks.next().unwrap();
         assert!(matches!(
             parser.parse_block(block),
-            Ok(Some(StreamEvent::Entry { posix_header, size: 513 }))
-                if posix_header.filename().as_str() == Ok("hello_world_513b.txt")
+            Ok(Some(StreamEvent::Entry { filename, size: 513, .. }))
+                if filename.as_str() == Ok("hello_world_513b.txt")
         ));
     }
 
@@ -511,7 +614,8 @@ mod tests {
     #[test]
     fn test_rejects_invalid_type_flag() {
         let mut block = header_block(include_bytes!("../tests/gnu_tar_default.tar"));
-        block[156] = b'?';
+        // Unknown type flag.
+        block[TYPEFLAG_OFFSET] = b'?';
         write_checksum(&mut block);
         assert_eq!(
             TarStreamParser::new().parse_block(&block),
