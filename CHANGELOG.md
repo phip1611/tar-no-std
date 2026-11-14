@@ -20,6 +20,8 @@
   `MissingTerminator` or as an invalid header, like by `TarStreamParser`.
 - `TarArchive` now implements `TryFrom<Box<[u8]>>` instead of
   `From<Box<[u8]>>`, which panicked for invalid archives.
+- Skipped entries, such as directories, are now logged at debug level instead
+  of warn level, because skipping them is the expected behavior.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

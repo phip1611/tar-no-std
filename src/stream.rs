@@ -9,7 +9,7 @@
 use crate::BLOCKSIZE;
 use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
-use log::warn;
+use log::debug;
 
 /// Event returned by [`TarStreamParser::parse_block`]. It borrows the block
 /// that was passed in.
@@ -224,10 +224,7 @@ impl TarStreamParser {
                     };
                 }
                 if skip {
-                    warn!(
-                        "Skipping entry of type {:?} (not supported yet)",
-                        hdr.typeflag
-                    );
+                    debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
                     return Ok(None);
                 }
                 Ok(Some(StreamEvent::Entry {

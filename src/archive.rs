@@ -11,7 +11,7 @@ use alloc::boxed::Box;
 use core::fmt::{Debug, Display, Formatter};
 use core::str::Utf8Error;
 use core::{error, fmt};
-use log::warn;
+use log::debug;
 
 /// Describes an entry in an archive.
 /// Currently only supports files but no directories.
@@ -430,10 +430,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
             .expect("type flag should be valid after successful validation")
             .is_regular_file()
         {
-            warn!(
-                "Skipping entry of type {:?} (not supported yet)",
-                hdr.typeflag
-            );
+            debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
 
             // Update properties.
             (block_index, hdr) = self.next_hdr()?;
