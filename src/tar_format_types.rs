@@ -126,14 +126,14 @@ impl<const N: usize> Debug for TarFormatString<N> {
 
 /// A number with a specified base.
 ///
-/// Trailing spaces in the string are ignored.
+/// Leading and trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatNumber<const N: usize, const R: u32>(TarFormatString<N>);
 
 /// An octal number.
 ///
-/// Trailing spaces in the string are ignored.
+/// Leading and trailing spaces in the string are ignored.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct TarFormatOctal<const N: usize>(TarFormatNumber<N, 8>);
@@ -163,8 +163,11 @@ impl<const N: usize, const R: u32> TarFormatNumber<N, R> {
     where
         T: num_traits::Num,
     {
-        let str = self.0.as_str_until_first_space().unwrap_or("");
-        T::from_str_radix(str, R)
+        // Some Tar implementations right-align numbers with leading spaces,
+        // and others terminate them with a space.
+        let str = self.0.as_str().unwrap_or("").trim_start_matches(' ');
+        let end = str.find(' ').unwrap_or(str.len());
+        T::from_str_radix(&str[..end], R)
     }
 
     /// Returns the underlying [`TarFormatString`].
@@ -323,6 +326,12 @@ mod tar_format_number_tests {
         let str = [b'0', b'1', b'0', b' ', 0];
         let str = TarFormatNumber::<5, 10>::new(str);
         assert_eq!(str.as_number::<u64>(), Ok(10));
+    }
+
+    #[test]
+    fn test_as_number_with_leading_spaces() {
+        let str = TarFormatNumber::<8, 8>::new(*b"  1234\0 ");
+        assert_eq!(str.as_number::<u64>(), Ok(0o1234));
     }
 
     #[test]

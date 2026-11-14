@@ -781,6 +781,23 @@ mod tests {
     }
 
     #[test]
+    fn test_numbers_with_leading_spaces() {
+        // Setup: right-align the size and the checksum with spaces, like some
+        // old Tar implementations do.
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[124..136].copy_from_slice(b"       1001 ");
+        // SAFETY: the data has at least one complete header block.
+        let hdr = unsafe { data.as_mut_ptr().cast::<PosixHeader>().as_mut().unwrap() };
+        let checksum = format!("{:7o}\0", hdr.computed_checksum());
+        hdr.cksum = TarFormatOctal::new(checksum.as_bytes().try_into().unwrap());
+
+        let archive = TarArchiveRef::new(data.as_slice()).unwrap();
+        let entry = archive.entries().next().unwrap();
+        assert_eq!(entry.filename().as_str(), Ok("bye_world_513b.txt"));
+        assert_eq!(entry.size(), 513);
+    }
+
+    #[test]
     fn test_contiguous_file_is_regular_file() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
         data[TYPEFLAG_OFFSET] = TypeFlag::CONTTYPE.to_byte();

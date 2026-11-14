@@ -28,6 +28,8 @@
   archive instead of the entry, like `ArchiveEntry::data`.
 - Added `TarFormatString::as_bytes` to read strings that are not valid UTF-8,
   such as Latin-1 filenames.
+- Numeric header fields with leading spaces, as written by some old Tar
+  implementations, are now accepted.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
