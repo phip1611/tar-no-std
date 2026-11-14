@@ -381,6 +381,19 @@ mod tests {
     }
 
     #[test]
+    fn test_stream_reports_contiguous_file() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        let mut block = header_block(&data);
+        block[156] = b'7';
+        write_checksum(&mut block);
+        data[..BLOCKSIZE].copy_from_slice(&block);
+
+        let files = parse_files(&data);
+        assert_eq!(files[0].0, "bye_world_513b.txt");
+        assert_eq!(files, archive_entries(&data));
+    }
+
+    #[test]
     fn test_stream_skips_directories() {
         let entries =
             parse_streaming(include_bytes!("../tests/gnu_tar_default_with_dir.tar")).unwrap();

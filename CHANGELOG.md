@@ -22,6 +22,8 @@
   `From<Box<[u8]>>`, which panicked for invalid archives.
 - Skipped entries, such as directories, are now logged at debug level instead
   of warn level, because skipping them is the expected behavior.
+- Contiguous files (type flag `7`) are now reported as regular files instead
+  of being skipped, as the Tar spec requires.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

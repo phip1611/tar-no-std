@@ -752,6 +752,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_contiguous_file_is_regular_file() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        data[156] = b'7';
+        write_first_header_checksum(&mut data);
+
+        let archive = TarArchiveRef::new(data.as_slice()).unwrap();
+        let entry = archive.entries().next().unwrap();
+        assert_eq!(entry.filename().as_str(), Ok("bye_world_513b.txt"));
+        assert_eq!(entry.size(), 513);
+    }
+
     /// Like [`test_archive_entries`] but with additional `alloc` functionality.
     #[cfg(feature = "alloc")]
     #[test]
