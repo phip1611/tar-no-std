@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Module for [`TarStreamParser`], which parses a Tar archive one block at a
-//! time, without requiring the whole archive in memory. It is the engine of
-//! [`TarStreamReader`].
+//! time, without requiring the whole archive in memory. It is also the engine
+//! of [`TarStreamReader`].
 //!
 //! [`TarStreamReader`]: crate::TarStreamReader
 
@@ -11,20 +11,22 @@ use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
 use log::warn;
 
-/// Event returned by [`TarStreamParser::parse_block`].
+/// Event returned by [`TarStreamParser::parse_block`]. It borrows the block
+/// that was passed in.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum StreamEvent {
+pub enum StreamEvent<'a> {
     /// The block is the header of a regular file. If the file has a payload,
     /// the next blocks produce [`StreamEvent::Data`] events.
     Entry {
+        /// Header of the file.
+        header: &'a PosixHeader,
         /// Size of the file in bytes.
         size: usize,
     },
     /// The block holds payload bytes of the current file.
     Data {
-        /// Number of payload bytes at the start of the block. The rest of the
-        /// block is padding.
-        len: usize,
+        /// Payload bytes of the block, without the padding.
+        data: &'a [u8],
         /// Number of payload bytes of the current file in the following
         /// blocks. Zero for the last block of the file.
         remaining: usize,
@@ -56,6 +58,11 @@ enum State {
 
 /// Parses a Tar archive incrementally, one 512-byte block at a time.
 ///
+/// Use it when the blocks are pushed to you, for example by an interrupt, a
+/// DMA callback, or the packet handler of a network stack, and you cannot wait
+/// for the next block. If you can, [`TarStreamReader`] is simpler: it pulls
+/// the blocks itself and takes care of the payload and the end of the archive.
+///
 /// The parser only keeps a few words of state. It validates each header like
 /// [`TarArchiveRef::new`] does: checksums, type flags, payload sizes, and the
 /// double-zero terminator.
@@ -66,7 +73,58 @@ enum State {
 /// terminator are ignored.
 ///
 /// Once an error was returned, the parser keeps returning the same error.
+/// Once the input ended, [`TarStreamParser::finish`] checks that the archive
+/// was complete.
 ///
+/// # Example
+///
+/// ```rust
+/// use tar_no_std::{CorruptDataError, StreamEvent, TarStreamParser};
+///
+/// /// Unpacks an archive whose blocks are delivered by a callback.
+/// struct Unpacker {
+///     parser: TarStreamParser,
+///     files: usize,
+/// }
+///
+/// impl Unpacker {
+///     /// Called for every 512-byte block of the archive, as it arrives.
+///     fn on_block(&mut self, block: &[u8; 512]) -> Result<(), CorruptDataError> {
+///         match self.parser.parse_block(block)? {
+///             Some(StreamEvent::Entry { header, size }) => {
+///                 // For example, create the file.
+///                 println!("{:?} ({size} bytes)", header.filename());
+///                 self.files += 1;
+///             }
+///             Some(StreamEvent::Data { data, remaining }) => {
+///                 // For example, write `data` to the file.
+///                 println!("  {} bytes, {remaining} left", data.len());
+///             }
+///             Some(StreamEvent::End) | None => {}
+///         }
+///         Ok(())
+///     }
+///
+///     /// Called once the input ended.
+///     fn on_end(&self) -> Result<(), CorruptDataError> {
+///         self.parser.finish()
+///     }
+/// }
+///
+/// let mut unpacker = Unpacker {
+///     parser: TarStreamParser::new(),
+///     files: 0,
+/// };
+/// // Stands in for the interrupt or network stack that delivers the blocks.
+/// let archive = include_bytes!("../tests/gnu_tar_default.tar");
+/// for block in archive.chunks_exact(512) {
+///     unpacker.on_block(block.try_into().unwrap()).unwrap();
+/// }
+/// unpacker.on_end().unwrap();
+/// assert_eq!(unpacker.files, 3);
+/// ```
+///
+/// [`TarStreamReader`]: crate::TarStreamReader
 /// [`TarArchiveRef::new`]: crate::TarArchiveRef::new
 /// [`ArchiveEntryIterator`]: crate::ArchiveEntryIterator
 #[derive(Debug, Default)]
@@ -79,6 +137,7 @@ pub struct TarStreamParser {
 
 impl TarStreamParser {
     /// Creates a parser positioned at the start of an archive.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             state: State::Header,
@@ -94,10 +153,10 @@ impl TarStreamParser {
     ///
     /// # Errors
     /// Returns [`CorruptDataError`] if the block is invalid.
-    pub fn parse_block(
+    pub fn parse_block<'a>(
         &mut self,
-        block: &[u8; BLOCKSIZE],
-    ) -> Result<Option<StreamEvent>, CorruptDataError> {
+        block: &'a [u8; BLOCKSIZE],
+    ) -> Result<Option<StreamEvent<'a>>, CorruptDataError> {
         let block_index = self.block_index;
         self.block_index = self.block_index.saturating_add(1);
         let event = self.next_event(block_index, block);
@@ -109,11 +168,11 @@ impl TarStreamParser {
 
     /// Parses `block` according to the current state and moves on to the
     /// next state.
-    fn next_event(
+    fn next_event<'a>(
         &mut self,
         block_index: usize,
-        block: &[u8; BLOCKSIZE],
-    ) -> Result<Option<StreamEvent>, CorruptDataError> {
+        block: &'a [u8; BLOCKSIZE],
+    ) -> Result<Option<StreamEvent<'a>>, CorruptDataError> {
         match self.state {
             State::Failed(error) => Err(error),
             State::End => Ok(None),
@@ -144,7 +203,10 @@ impl TarStreamParser {
                 if skip {
                     return Ok(None);
                 }
-                Ok(Some(StreamEvent::Data { len, remaining }))
+                Ok(Some(StreamEvent::Data {
+                    data: &block[..len],
+                    remaining,
+                }))
             }
             State::Header => {
                 let hdr = PosixHeader::from_block(block, 0);
@@ -168,7 +230,7 @@ impl TarStreamParser {
                     );
                     return Ok(None);
                 }
-                Ok(Some(StreamEvent::Entry { size }))
+                Ok(Some(StreamEvent::Entry { header: hdr, size }))
             }
         }
     }
@@ -241,18 +303,22 @@ mod tests {
         let mut entries: Vec<ParsedEntry> = Vec::new();
         for (block_index, block) in blocks(data).enumerate() {
             match parser.parse_block(block)? {
-                Some(StreamEvent::Entry { size }) => {
-                    let hdr = PosixHeader::from_block(block, 0);
-                    assert!(hdr.typeflag.try_to_type_flag().unwrap().is_regular_file());
+                Some(StreamEvent::Entry { header, size }) => {
+                    assert!(
+                        header
+                            .typeflag
+                            .try_to_type_flag()
+                            .unwrap()
+                            .is_regular_file()
+                    );
                     entries.push(ParsedEntry {
                         block_index,
-                        filename: hdr.filename().as_str().unwrap().to_string(),
+                        filename: header.filename().as_str().unwrap().to_string(),
                         data: Vec::with_capacity(size),
                     });
                 }
-                Some(StreamEvent::Data { len, .. }) => {
-                    let data = &mut entries.last_mut().unwrap().data;
-                    data.extend_from_slice(&block[..len]);
+                Some(StreamEvent::Data { data, .. }) => {
+                    entries.last_mut().unwrap().data.extend_from_slice(data);
                 }
                 Some(StreamEvent::End) => break,
                 None => {}
@@ -345,28 +411,42 @@ mod tests {
     }
 
     #[test]
-    fn test_data_events_strip_padding() {
+    fn test_events_borrow_the_block() {
         let data = include_bytes!("../tests/gnu_tar_default.tar");
         let mut parser = TarStreamParser::new();
         let mut blocks = blocks(data);
-        let mut next_event = || parser.parse_block(blocks.next().unwrap());
 
-        assert_eq!(next_event(), Ok(Some(StreamEvent::Entry { size: 513 })));
+        let block = blocks.next().unwrap();
         assert_eq!(
-            next_event(),
+            parser.parse_block(block),
+            Ok(Some(StreamEvent::Entry {
+                header: PosixHeader::from_block(block, 0),
+                size: 513
+            }))
+        );
+        let block = blocks.next().unwrap();
+        assert_eq!(
+            parser.parse_block(block),
             Ok(Some(StreamEvent::Data {
-                len: 512,
+                data: &block[..],
                 remaining: 1
             }))
         );
+        // The padding of the last block is cut off.
+        let block = blocks.next().unwrap();
         assert_eq!(
-            next_event(),
+            parser.parse_block(block),
             Ok(Some(StreamEvent::Data {
-                len: 1,
+                data: &block[..1],
                 remaining: 0
             }))
         );
-        assert!(matches!(next_event(), Ok(Some(StreamEvent::Entry { .. }))));
+        let block = blocks.next().unwrap();
+        assert!(matches!(
+            parser.parse_block(block),
+            Ok(Some(StreamEvent::Entry { header, size: 513 }))
+                if header.filename().as_str() == Ok("hello_world_513b.txt")
+        ));
     }
 
     #[test]

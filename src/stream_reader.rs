@@ -257,7 +257,7 @@ impl<S: BlockSource> TarStreamReader<S> {
         }
         loop {
             match self.next_block()? {
-                Some(StreamEvent::Entry { size }) => {
+                Some(StreamEvent::Entry { size, .. }) => {
                     self.header = self.block;
                     self.size = size;
                     self.remaining = size;
@@ -272,7 +272,7 @@ impl<S: BlockSource> TarStreamReader<S> {
     }
 
     /// Reads the next block from the source and parses it.
-    fn next_block(&mut self) -> Result<Option<StreamEvent>, StreamError<S::Error>> {
+    fn next_block(&mut self) -> Result<Option<StreamEvent<'_>>, StreamError<S::Error>> {
         if let State::Failed(error) = self.state {
             return Err(error.into());
         }
@@ -292,9 +292,9 @@ impl<S: BlockSource> TarStreamReader<S> {
                 .unwrap_or(CorruptDataError::MissingTerminator))
         };
         match event {
-            Ok(Some(StreamEvent::Data { len, remaining })) => {
+            Ok(Some(StreamEvent::Data { data, remaining })) => {
                 self.pos = 0;
-                self.len = len;
+                self.len = data.len();
                 self.remaining = remaining;
             }
             Ok(Some(StreamEvent::End)) => self.state = State::End,

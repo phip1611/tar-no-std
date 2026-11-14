@@ -54,9 +54,10 @@ fn main() {
 
 Archives that do not fit into memory can be read block by block with
 `TarStreamReader`, which pulls 512-byte blocks from a source such as a file, a
-flash device, or a network stream. See the
-[documentation on docs.rs](https://docs.rs/tar-no-std/latest/tar_no_std/struct.TarStreamReader.html)
-for details and an example.
+flash device, or a network stream, or with `TarStreamParser`, to which you pass
+blocks that are pushed to you, for example by an interrupt. See the
+[documentation on docs.rs](https://docs.rs/tar-no-std/latest/tar_no_std/#streaming)
+for details and examples.
 
 ## Cargo Features
 
