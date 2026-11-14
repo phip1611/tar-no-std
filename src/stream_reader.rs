@@ -36,7 +36,10 @@ use core::{error, fmt};
 /// impl BlockSource for Flash {
 ///     type Error = PartialBlock;
 ///
-///     fn read_block(&mut self, buf: &mut [u8; 512]) -> Result<bool, PartialBlock> {
+///     fn read_block(
+///         &mut self,
+///         buf: &mut [u8; 512],
+///     ) -> Result<bool, PartialBlock> {
 ///         match self.data.get(self.offset..self.offset + 512) {
 ///             Some(block) => {
 ///                 buf.copy_from_slice(block);
@@ -67,10 +70,12 @@ use core::{error, fmt};
 /// use tar_no_std::TarStreamReader;
 ///
 /// let mut file: &[u8] = include_bytes!("../tests/gnu_tar_default.tar");
-/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| match file.read_exact(buf) {
-///     Ok(()) => Ok(true),
-///     Err(error) if error.kind() == ErrorKind::UnexpectedEof => Ok(false),
-///     Err(error) => Err(error),
+/// let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| {
+///     match file.read_exact(buf) {
+///         Ok(()) => Ok(true),
+///         Err(error) if error.kind() == ErrorKind::UnexpectedEof => Ok(false),
+///         Err(error) => Err(error),
+///     }
 /// });
 ///
 /// let mut count = 0;

@@ -66,7 +66,8 @@ test archives as seeds, run:
 
 ```shell
 mkdir -p fuzz/corpus/parse_archive
-cargo +nightly fuzz run parse_archive fuzz/corpus/parse_archive tests -- -max_total_time=60
+cargo +nightly fuzz run parse_archive fuzz/corpus/parse_archive tests \
+  -- -max_total_time=60
 ```
 
 The `parse_valid_archive` target generates structurally valid archives to

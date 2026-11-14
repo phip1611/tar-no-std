@@ -621,7 +621,8 @@ mod tests {
         assert_archive_content(&entries);
     }
 
-    /// Tests to read the entries from an existing tarball with a directory in it.
+    /// Tests to read the entries from an existing tarball with a directory in
+    /// it.
     #[test]
     fn test_archive_with_long_dir_entries() {
         // tarball created with:

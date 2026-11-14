@@ -99,7 +99,10 @@ enum State {
 ///
 /// impl Unpacker {
 ///     /// Called for every 512-byte block of the archive, as it arrives.
-///     fn on_block(&mut self, block: &[u8; 512]) -> Result<(), CorruptDataError> {
+///     fn on_block(
+///         &mut self,
+///         block: &[u8; 512],
+///     ) -> Result<(), CorruptDataError> {
 ///         match self.parser.parse_block(block)? {
 ///             Some(StreamEvent::Entry { posix_header, size }) => {
 ///                 // For example, create the file.

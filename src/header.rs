@@ -116,57 +116,64 @@ impl Debug for TypeFlagRaw {
 pub enum TypeFlag {
     /// Represents a regular file.
     ///
-    /// In order to be compatible with older versions of tar, a typeflag value of AREGTYPE should
-    /// be silently recognized as a regular file. New archives should be created using REGTYPE.
-    /// Also, for backward compatibility, tar treats a regular file whose name ends with a slash
-    /// as a directory.
+    /// In order to be compatible with older versions of tar, a typeflag value
+    /// of AREGTYPE should be silently recognized as a regular file. New
+    /// archives should be created using REGTYPE. Also, for backward
+    /// compatibility, tar treats a regular file whose name ends with a slash as
+    /// a directory.
     REGTYPE = b'0',
     /// Represents a regular file in old archives.
     ///
-    /// In order to be compatible with older versions of tar, a typeflag value of AREGTYPE should
-    /// be silently recognized as a regular file. New archives should be created using REGTYPE.
-    /// Also, for backward compatibility, tar treats a regular file whose name ends with a slash
-    /// as a directory.
+    /// In order to be compatible with older versions of tar, a typeflag value
+    /// of AREGTYPE should be silently recognized as a regular file. New
+    /// archives should be created using REGTYPE. Also, for backward
+    /// compatibility, tar treats a regular file whose name ends with a slash as
+    /// a directory.
     AREGTYPE = b'\0',
-    /// Represents a hard link to another file, of any type, previously archived.
+    /// Represents a hard link to another file, of any type, previously
+    /// archived.
     ///
-    /// Such files are identified in Unix by each file having the same device and inode number.
-    /// The linked-to name is specified in the linkname field with a trailing null.
+    /// Such files are identified in Unix by each file having the same device
+    /// and inode number. The linked-to name is specified in the linkname field
+    /// with a trailing null.
     LINK = b'1',
     /// Represents a symbolic link to another file.
     ///
-    /// The linked-to name is specified in the linkname field with a trailing null.
+    /// The linked-to name is specified in the linkname field with a trailing
+    /// null.
     SYMTYPE = b'2',
     /// Represents a character special file.
     ///
-    /// The devmajor and devminor fields contain the major and minor device numbers. Operating
-    /// systems may map the device specifications to their own local specification, or may ignore
-    /// the entry.
+    /// The devmajor and devminor fields contain the major and minor device
+    /// numbers. Operating systems may map the device specifications to their
+    /// own local specification, or may ignore the entry.
     CHRTYPE = b'3',
     /// Represents a block special file.
     ///
-    /// The devmajor and devminor fields contain the major and minor device numbers. Operating
-    /// systems may map the device specifications to their own local specification, or may ignore
-    /// the entry.
+    /// The devmajor and devminor fields contain the major and minor device
+    /// numbers. Operating systems may map the device specifications to their
+    /// own local specification, or may ignore the entry.
     BLKTYPE = b'4',
     /// Represents a directory or sub-directory.
     ///
-    /// The directory name in the name field should end with a slash. On systems where disk
-    /// allocation is performed on a directory basis, the size field will contain the maximum
-    /// number of bytes (which may be rounded to the nearest disk block allocation unit) which the
-    /// directory may hold. A size field of zero indicates no such limiting. Systems which do not
-    /// support limiting in this manner should ignore the size field.
+    /// The directory name in the name field should end with a slash. On systems
+    /// where disk allocation is performed on a directory basis, the size field
+    /// will contain the maximum number of bytes (which may be rounded to the
+    /// nearest disk block allocation unit) which the directory may hold. A size
+    /// field of zero indicates no such limiting. Systems which do not support
+    /// limiting in this manner should ignore the size field.
     DIRTYPE = b'5',
     /// Represents a FIFO special file.
     ///
-    /// Note that the archiving of a FIFO file archives the existence of this file and not its
-    /// contents.
+    /// Note that the archiving of a FIFO file archives the existence of this
+    /// file and not its contents.
     FIFOTYPE = b'6',
     /// Represents a contiguous file.
     ///
-    /// It is the same as a normal file except that, in operating systems which support it, all
-    /// its space is allocated contiguously on the disk. Operating systems which do not allow
-    /// contiguous allocation should silently treat this type as a normal file.
+    /// It is the same as a normal file except that, in operating systems which
+    /// support it, all its space is allocated contiguously on the disk.
+    /// Operating systems which do not allow contiguous allocation should
+    /// silently treat this type as a normal file.
     CONTTYPE = b'7',
     /// POSIX PAX extended header applying to the next entry in the archive.
     XHDTYPE = b'x',
