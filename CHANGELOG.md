@@ -6,6 +6,8 @@
   `TarFormatDecimal<12>`. The field is octal in the Tar format, so it was
   previously parsed to a wrong value.
 - Removed `TarFormatDecimal`, which is no longer used by any header field.
+- `TarFormatNumber` is no longer public. It was only used inside
+  `TarFormatOctal`.
 - Added `TarStreamReader` to read archives block by block from a
   `BlockSource` without holding them in memory. Its errors are reported as
   `StreamError`.
@@ -13,8 +15,17 @@
   for example by an interrupt or a network stack. It reports each block as a
   `StreamEvent`.
 - `TarArchiveRef::new` and `TarArchive::new` now accept an empty archive that
-  only consists of the two terminating zero blocks. `MIN_BLOCK_COUNT` is now 2
-  instead of 3.
+  only consists of the two terminating zero blocks. `MIN_BLOCK_COUNT` and
+  `CorruptDataError::TooShort` were removed: a single block is now reported as
+  `MissingTerminator` or as an invalid header, like by `TarStreamParser`.
+- `TarArchive` now implements `TryFrom<Box<[u8]>>` instead of
+  `From<Box<[u8]>>`, which panicked for invalid archives.
+- Skipped entries, such as directories, are now logged at debug level instead
+  of warn level, because skipping them is the expected behavior.
+- Contiguous files (type flag `7`) are now reported as regular files instead
+  of being skipped, as the Tar spec requires.
+- `ArchiveEntry::posix_header` now returns a reference that borrows the
+  archive instead of the entry, like `ArchiveEntry::data`.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

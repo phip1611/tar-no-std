@@ -9,7 +9,7 @@
 use crate::BLOCKSIZE;
 use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
-use log::warn;
+use log::debug;
 
 /// Event returned by [`TarStreamParser::parse_block`]. It borrows the block
 /// that was passed in.
@@ -224,10 +224,7 @@ impl TarStreamParser {
                     };
                 }
                 if skip {
-                    warn!(
-                        "Skipping entry of type {:?} (not supported yet)",
-                        hdr.typeflag
-                    );
+                    debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
                     return Ok(None);
                 }
                 Ok(Some(StreamEvent::Entry {
@@ -381,6 +378,19 @@ mod tests {
         ] {
             assert_eq!(parse_files(data), archive_entries(data));
         }
+    }
+
+    #[test]
+    fn test_stream_reports_contiguous_file() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        let mut block = header_block(&data);
+        block[156] = b'7';
+        write_checksum(&mut block);
+        data[..BLOCKSIZE].copy_from_slice(&block);
+
+        let files = parse_files(&data);
+        assert_eq!(files[0].0, "bye_world_513b.txt");
+        assert_eq!(files, archive_entries(&data));
     }
 
     #[test]

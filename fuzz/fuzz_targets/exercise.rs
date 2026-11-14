@@ -3,9 +3,7 @@
 use core::convert::Infallible;
 use core::hint::black_box;
 
-use tar_no_std::{
-    BLOCKSIZE, MIN_BLOCK_COUNT, StreamError, TarArchiveRef, TarFormatString, TarStreamReader,
-};
+use tar_no_std::{BLOCKSIZE, StreamError, TarArchiveRef, TarFormatString, TarStreamReader};
 
 const FILENAME_LEN: usize = 256;
 
@@ -53,8 +51,8 @@ pub fn stream(data: &[u8]) {
     let result = read_with_reader(data, chunk_size);
 
     // Unlike the reader, TarArchiveRef also rejects inputs that are not made
-    // of whole blocks or that have less than MIN_BLOCK_COUNT blocks.
-    if data.len() % BLOCKSIZE != 0 || data.len() / BLOCKSIZE < MIN_BLOCK_COUNT {
+    // of whole blocks.
+    if data.len() % BLOCKSIZE != 0 {
         return;
     }
     let expected = TarArchiveRef::new(data)

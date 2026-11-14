@@ -151,15 +151,17 @@ pub enum TypeFlag {
 
 impl TypeFlag {
     /// Whether we have a regular file.
+    ///
+    /// This includes [`Self::CONTTYPE`], which the spec says to treat as a
+    /// normal file.
     #[must_use]
-    pub fn is_regular_file(self) -> bool {
-        // Equivalent. See spec.
-        self == Self::AREGTYPE || self == Self::REGTYPE
+    pub const fn is_regular_file(self) -> bool {
+        matches!(self, Self::REGTYPE | Self::AREGTYPE | Self::CONTTYPE)
     }
 
     /// Whether this entry has payload blocks described by the size field.
-    pub(crate) fn has_payload(self) -> bool {
-        self.is_regular_file() || matches!(self, Self::CONTTYPE | Self::XHDTYPE | Self::XGLTYPE)
+    pub(crate) const fn has_payload(self) -> bool {
+        self.is_regular_file() || matches!(self, Self::XHDTYPE | Self::XGLTYPE)
     }
 }
 
