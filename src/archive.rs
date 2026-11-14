@@ -6,6 +6,7 @@
 //! which owns data on the heap.
 
 use crate::header::{PosixHeader, TypeFlag};
+use crate::pax::PaxScanner;
 use crate::tar_format_types::TarFormatString;
 use crate::{BLOCKSIZE, MAX_LONG_NAME_PAYLOAD, POSIX_1003_MAX_FILENAME_LEN};
 #[cfg(feature = "alloc")]
@@ -44,8 +45,8 @@ impl<'a> ArchiveEntry<'a> {
         }
     }
 
-    /// Filename of the entry, including the ustar prefix or the GNU long name
-    /// if there is one.
+    /// Filename of the entry, including the ustar prefix, or the GNU long name
+    /// or PAX path if there is one.
     #[must_use]
     pub const fn filename(&self) -> TarFormatString<{ POSIX_1003_MAX_FILENAME_LEN }> {
         self.filename
@@ -120,12 +121,13 @@ pub enum CorruptDataError {
     },
     /// The archive does not end with two zero blocks.
     MissingTerminator,
-    /// The GNU long name at `block_index` is longer than 256 bytes.
+    /// The GNU long name or PAX path at `block_index` is longer than 256
+    /// bytes.
     ///
-    /// The format has no limit, but this crate does not support longer
+    /// The formats have no limit, but this crate does not support longer
     /// names, as it stores them without allocating.
     FilenameTooLong {
-        /// Index of the header of the long name.
+        /// Index of the header of the long name or PAX path.
         block_index: usize,
     },
 }
@@ -154,7 +156,7 @@ impl Display for CorruptDataError {
             Self::MissingTerminator => f.write_str("archive does not end with two zero blocks"),
             Self::FilenameTooLong { block_index } => write!(
                 f,
-                "GNU long name at block {block_index} is longer than {POSIX_1003_MAX_FILENAME_LEN} bytes"
+                "filename at block {block_index} is longer than {POSIX_1003_MAX_FILENAME_LEN} bytes"
             ),
         }
     }
@@ -327,6 +329,15 @@ impl<'a> TarArchiveRef<'a> {
             if is_long_name && size > MAX_LONG_NAME_PAYLOAD {
                 return Err(CorruptDataError::FilenameTooLong { block_index });
             }
+            // TarStreamParser reports errors in the records before it knows
+            // that the payload is incomplete, so scan what is there first.
+            if typeflag == TypeFlag::XHDTYPE {
+                let start = (block_index + 1) * BLOCKSIZE;
+                let end = start.saturating_add(size).min(data.len());
+                PaxScanner::new()
+                    .feed(&data[start..end], &mut None)
+                    .map_err(|error| error.into_corrupt_data_error(block_index))?;
+            }
             if next_block_index > total_block_count {
                 return Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index });
             }
@@ -438,14 +449,12 @@ impl<'a> Iterator for ArchiveHeaderIterator<'a> {
 
 /// Iterator over the files of the archive.
 ///
-/// Only regular files are yielded. Directories, links, PAX extended headers,
-/// and other recognized special types ([`crate::TypeFlag`]) are skipped.
+/// Only regular files are yielded. Directories, links, and other special
+/// entries ([`crate::TypeFlag`]) are skipped.
 ///
-/// This permits reading PAX archives that use extended records only for
-/// optional metadata, such as high-precision timestamps. PAX metadata is
-/// skipped rather than applied, so filenames and sizes must remain available
-/// in the regular file headers. Directory paths encoded in those names are
-/// preserved.
+/// GNU long names and PAX paths are applied to the filename of the following
+/// file. Other PAX records, such as high-precision timestamps, are skipped.
+/// Directory paths encoded in the names are preserved.
 #[derive(Debug)]
 pub struct ArchiveEntryIterator<'a>(ArchiveHeaderIterator<'a>);
 
@@ -474,7 +483,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
     type Item = ArchiveEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // GNU long name of the next entry, if there is one.
+        // GNU long name or PAX path of the next entry, if there is one.
         let mut long_name = None;
         loop {
             let (block_index, hdr) = self.next_hdr()?;
@@ -486,6 +495,12 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
                 let name = TarFormatString::from_null_terminated(self.payload(block_index, hdr))
                     .expect("long name should be valid after successful validation");
                 long_name = Some(name);
+                continue;
+            }
+            if typeflag == TypeFlag::XHDTYPE {
+                PaxScanner::new()
+                    .feed(self.payload(block_index, hdr), &mut long_name)
+                    .expect("PAX records should be valid after successful validation");
                 continue;
             }
             // Links are skipped, so their long names are not needed.
@@ -924,6 +939,41 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].0.as_str(), Ok("file.txt"));
         assert_eq!(entries[0].1, "labeled\n");
+    }
+
+    /// Tests that PAX paths are applied, for long paths and for UTF-8 names.
+    ///
+    /// The archives with PAX paths were created with GNU tar 1.35:
+    ///
+    /// ```text
+    /// tar --format=posix --owner=0 --group=0 --numeric-owner --mtime=@0 \
+    ///     --sort=name -b1 --pax-option=delete=atime,delete=ctime \
+    ///     --pax-option=exthdr.name=%d/PaxHeaders/%f -cf <archive> .
+    /// ```
+    #[test]
+    fn test_pax_paths() {
+        let archive =
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_posix_long_names.tar")).unwrap();
+        let long_name = format!("./{0}/{0}/long_name.txt", "d".repeat(48));
+        let entries = archive
+            .entries()
+            .map(|entry| (entry.filename(), entry.data_as_str().unwrap()))
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].0.as_str(), Ok(long_name.as_str()));
+        assert_eq!(entries[0].1, "long name\n");
+        assert_eq!(entries[1].0.as_str(), Ok("./short.txt"));
+        assert_eq!(entries[2].0.as_str(), Ok("./utf8_äöü_日本.txt"));
+        assert_eq!(entries[2].1, "utf8 name\n");
+    }
+
+    #[test]
+    fn test_rejects_too_long_pax_path() {
+        // The 300 bytes long path of the file is at block 7.
+        assert_eq!(
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_posix_too_long_name.tar")),
+            Err(CorruptDataError::FilenameTooLong { block_index: 7 })
+        );
     }
 
     #[test]

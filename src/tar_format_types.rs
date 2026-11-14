@@ -47,6 +47,11 @@ impl<const N: usize> TarFormatString<N> {
         Some(str)
     }
 
+    /// Returns the underlying bytes, including the NULL padding.
+    pub(crate) const fn as_mut_bytes(&mut self) -> &mut [u8; N] {
+        &mut self.bytes
+    }
+
     /// True if the is string empty (ignoring NULL bytes).
     #[must_use]
     pub const fn is_empty(&self) -> bool {

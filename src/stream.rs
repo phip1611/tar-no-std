@@ -10,6 +10,7 @@
 
 use crate::archive::CorruptDataError;
 use crate::header::{PosixHeader, TypeFlag};
+use crate::pax::PaxScanner;
 use crate::tar_format_types::TarFormatString;
 use crate::{BLOCKSIZE, MAX_LONG_NAME_PAYLOAD, POSIX_1003_MAX_FILENAME_LEN};
 use log::debug;
@@ -30,8 +31,8 @@ pub enum StreamEvent<'a> {
     Entry {
         /// Header of the file.
         posix_header: &'a PosixHeader,
-        /// Filename, including the ustar prefix or the GNU long name if there
-        /// is one.
+        /// Filename, including the ustar prefix, or the GNU long name or PAX
+        /// path if there is one.
         filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
         /// Size of the file in bytes.
         size: usize,
@@ -76,6 +77,13 @@ enum State {
         /// Size of the payload in bytes.
         size: usize,
     },
+    /// The next block holds the payload of a PAX extended header.
+    Pax {
+        /// Index of the PAX extended header.
+        header_block_index: usize,
+        /// Payload bytes of the header in the next blocks.
+        remaining: usize,
+    },
     /// The next block must be the second zero block of the terminator.
     FirstZeroBlock,
     /// The terminator was read, so the next blocks are ignored.
@@ -91,14 +99,14 @@ enum State {
 /// for the next block. If you can, [`TarStreamReader`] is simpler: it pulls
 /// the blocks itself and takes care of the payload and the end of the archive.
 ///
-/// The parser keeps less than 300 bytes of state, most of it for a GNU long
-/// name. It validates each header like [`TarArchiveRef::new`] does:
+/// The parser keeps about 350 bytes of state, most of it for a GNU long name
+/// or PAX path. It validates each header like [`TarArchiveRef::new`] does:
 /// checksums, type flags, payload sizes, and the double-zero terminator.
 ///
-/// Like [`ArchiveEntryIterator`], only regular files are reported.
-/// Directories, links, PAX extended headers, and other special entries are
-/// validated and then skipped together with their payload. Blocks after the
-/// terminator are ignored.
+/// Like [`ArchiveEntryIterator`], only regular files are reported, and GNU
+/// long names and PAX paths are applied to their filenames. Directories,
+/// links, and other special entries are validated and then skipped together
+/// with their payload. Blocks after the terminator are ignored.
 ///
 /// Once an error was returned, the parser keeps returning the same error.
 /// Once the input ended, [`TarStreamParser::finish`] checks that the archive
@@ -158,14 +166,22 @@ enum State {
 /// [`TarStreamReader`]: crate::TarStreamReader
 /// [`TarArchiveRef::new`]: crate::TarArchiveRef::new
 /// [`ArchiveEntryIterator`]: crate::ArchiveEntryIterator
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TarStreamParser {
     /// What the next block must be.
     state: State,
     /// Index of the next block in the archive.
     block_index: usize,
-    /// GNU long name of the next entry, if there is one.
+    /// GNU long name or PAX path of the next entry, if there is one.
     long_name: Option<TarFormatString<POSIX_1003_MAX_FILENAME_LEN>>,
+    /// Scanner of the records of the current PAX extended header.
+    pax: PaxScanner,
+}
+
+impl Default for TarStreamParser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TarStreamParser {
@@ -176,6 +192,7 @@ impl TarStreamParser {
             state: State::Header,
             block_index: 0,
             long_name: None,
+            pax: PaxScanner::new(),
         }
     }
 
@@ -221,6 +238,25 @@ impl TarStreamParser {
                 )?;
                 self.long_name = Some(name);
                 self.state = State::Header;
+                Ok(None)
+            }
+            State::Pax {
+                header_block_index,
+                remaining,
+            } => {
+                let len = remaining.min(BLOCKSIZE);
+                self.pax
+                    .feed(&block[..len], &mut self.long_name)
+                    .map_err(|error| error.into_corrupt_data_error(header_block_index))?;
+                let remaining = remaining - len;
+                if remaining > 0 {
+                    self.state = State::Pax {
+                        header_block_index,
+                        remaining,
+                    };
+                } else {
+                    self.state = State::Header;
+                }
                 Ok(None)
             }
             State::FirstZeroBlock => {
@@ -276,6 +312,16 @@ impl TarStreamParser {
                     }
                     return Ok(None);
                 }
+                if typeflag == TypeFlag::XHDTYPE {
+                    self.pax = PaxScanner::new();
+                    if size > 0 {
+                        self.state = State::Pax {
+                            header_block_index: block_index,
+                            remaining: size,
+                        };
+                    }
+                    return Ok(None);
+                }
                 let filename = self.long_name.unwrap_or_else(|| hdr.filename());
                 let skip = !hdr.is_regular_file(&filename);
                 if size > 0 {
@@ -318,6 +364,9 @@ impl TarStreamParser {
                 header_block_index, ..
             }
             | State::LongName {
+                header_block_index, ..
+            }
+            | State::Pax {
                 header_block_index, ..
             } => Err(CorruptDataError::PayloadExtendsBeyondArchive {
                 block_index: header_block_index,
@@ -451,6 +500,7 @@ mod tests {
             include_bytes!("../tests/gnu_tar_v7.tar"),
             include_bytes!("../tests/gnu_tar_gnu_long_names.tar"),
             include_bytes!("../tests/gnu_tar_gnu_label.tar"),
+            include_bytes!("../tests/gnu_tar_posix_long_names.tar"),
             include_bytes!("../tests/mac_tar_ustar_with_dir.tar"),
             include_bytes!("../tests/weird_fuzzing_tarballs.tar"),
         ] {
@@ -506,6 +556,14 @@ mod tests {
         let files = parse_files(&data);
         assert_eq!(files[0].0, "hello_world_513b.txt");
         assert_eq!(files, archive_entries(&data));
+    }
+
+    #[test]
+    fn test_stream_rejects_too_long_pax_path() {
+        let data = include_bytes!("../tests/gnu_tar_posix_too_long_name.tar");
+        let error = CorruptDataError::FilenameTooLong { block_index: 7 };
+        assert_eq!(parse_streaming(data), Err(error));
+        assert_eq!(TarArchiveRef::new(data), Err(error));
     }
 
     #[test]
