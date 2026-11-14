@@ -1,4 +1,12 @@
-# Unreleased
+# v0.6.0 (2026-11-14)
+
+This release makes the crate work with many more real-world archives and
+environments. Archives that do not fit into memory can now be read block by
+block, for example from a flash device or the network. Archives from GNU tar's
+default format, busybox, and Python's `tarfile` with long or non-ASCII paths
+now work, and features that are not supported yet are reported as errors
+instead of returning wrong data. This release has breaking changes, which are
+listed below.
 
 - Added cargo-fuzz infrastructure for archive parsing.
 - Added structure-aware fuzzing of checksum-valid Tar archives.
@@ -58,6 +66,7 @@
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
   prefix, like `ArchiveEntry::filename`.
+- Documentation improvements, including new examples for typical use cases.
 
 # v0.5.0 (2026-08-13)
 
