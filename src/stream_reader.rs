@@ -150,9 +150,10 @@ enum State {
 /// Reads a Tar archive from a [`BlockSource`], one block at a time.
 ///
 /// Unlike [`TarArchiveRef`], the archive does not need to be in memory: the
-/// reader only keeps the current block and the header of the current file,
-/// about 1 KiB. It validates the archive like [`TarArchiveRef::new`] does
-/// and, like [`TarArchiveRef::entries`], only reports regular files.
+/// reader only keeps the current block, the header and the filename of the
+/// current file, and the parser state, about 1.3 KiB. It validates the archive
+/// like [`TarArchiveRef::new`] does and, like [`TarArchiveRef::entries`], only
+/// reports regular files.
 ///
 /// Payload that was not read is skipped by the next call to
 /// [`TarStreamReader::next_entry`].
@@ -203,6 +204,13 @@ pub struct TarStreamReader<S> {
     block: [u8; BLOCKSIZE],
     /// Header of the current file.
     header: [u8; BLOCKSIZE],
+    /// Filename of the current file, as reported by [`StreamEvent::Entry`].
+    ///
+    /// [`TarStreamReader::next_entry`] sets it for each file. It is a
+    /// dedicated field, as the parser may take the filename from entries
+    /// before the header. [`PosixHeader::filename`] of `header` is then
+    /// incomplete and must not be used.
+    filename: TarFormatString<POSIX_1003_MAX_FILENAME_LEN>,
     /// Size of the current file in bytes.
     size: usize,
     /// Start of the unread payload bytes in `block`.
@@ -233,6 +241,7 @@ impl<S: BlockSource> TarStreamReader<S> {
             state: State::Reading,
             block: [0; BLOCKSIZE],
             header: [0; BLOCKSIZE],
+            filename: TarFormatString::new([0; POSIX_1003_MAX_FILENAME_LEN]),
             size: 0,
             pos: 0,
             len: 0,
@@ -257,8 +266,9 @@ impl<S: BlockSource> TarStreamReader<S> {
         }
         loop {
             match self.next_block()? {
-                Some(StreamEvent::Entry { size, .. }) => {
+                Some(StreamEvent::Entry { filename, size, .. }) => {
                     self.header = self.block;
+                    self.filename = filename;
                     self.size = size;
                     self.remaining = size;
                     self.pos = 0;
@@ -329,8 +339,8 @@ impl<S> StreamEntry<'_, S> {
 
     /// Filename of the file, including the ustar prefix if there is one.
     #[must_use]
-    pub fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
-        self.posix_header().filename()
+    pub const fn filename(&self) -> TarFormatString<POSIX_1003_MAX_FILENAME_LEN> {
+        self.reader.filename
     }
 
     /// Size of the file in bytes.
