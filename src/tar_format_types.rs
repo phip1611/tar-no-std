@@ -52,6 +52,15 @@ impl<const N: usize> TarFormatString<N> {
         self.bytes.iter().position(|&byte| byte == 0).unwrap_or(N)
     }
 
+    /// Returns the bytes of the string without the NULL padding.
+    ///
+    /// Unlike [`Self::as_str`], this also works for strings that are not
+    /// valid UTF-8, such as Latin-1 filenames.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..self.size()]
+    }
+
     /// Returns a str ref without terminating or intermediate NULL bytes.
     ///
     /// The string is truncated at the first NULL byte, in case not the full
@@ -235,6 +244,14 @@ mod tar_format_string_tests {
         assert!(!s.is_empty());
         assert_eq!(s.size(), 1);
         assert_eq!(s.as_str(), Ok("A"));
+    }
+
+    #[test]
+    fn test_as_bytes_without_utf8() {
+        // "Grüß" in Latin-1.
+        let s = TarFormatString::new(*b"Gr\xfc\xdf\0\0");
+        assert!(s.as_str().is_err());
+        assert_eq!(s.as_bytes(), b"Gr\xfc\xdf");
     }
 
     #[test]

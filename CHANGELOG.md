@@ -26,6 +26,8 @@
   of being skipped, as the Tar spec requires.
 - `ArchiveEntry::posix_header` now returns a reference that borrows the
   archive instead of the entry, like `ArchiveEntry::data`.
+- Added `TarFormatString::as_bytes` to read strings that are not valid UTF-8,
+  such as Latin-1 filenames.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
