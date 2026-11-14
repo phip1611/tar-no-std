@@ -805,6 +805,29 @@ mod tests {
         );
     }
 
+    /// Tests that both APIs report the same error for an archive of a single
+    /// block, which is too short to be valid.
+    #[test]
+    fn test_single_block_errors_match_archive() {
+        let file = header_block(include_bytes!("../tests/gnu_tar_default.tar"));
+        let dir = header_block(include_bytes!("../tests/gnu_tar_default_with_dir.tar"));
+        for (block, error) in [
+            ([0; BLOCKSIZE], CorruptDataError::MissingTerminator),
+            (
+                file,
+                CorruptDataError::PayloadExtendsBeyondArchive { block_index: 0 },
+            ),
+            (dir, CorruptDataError::MissingTerminator),
+            (
+                [0xff; BLOCKSIZE],
+                CorruptDataError::InvalidChecksum { block_index: 0 },
+            ),
+        ] {
+            assert_eq!(parse_streaming(&block).err(), Some(error));
+            assert_eq!(TarArchiveRef::new(&block).err(), Some(error));
+        }
+    }
+
     #[test]
     fn test_rejects_empty_input() {
         assert_eq!(
