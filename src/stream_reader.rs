@@ -151,7 +151,7 @@ enum State {
 ///
 /// Unlike [`TarArchiveRef`], the archive does not need to be in memory: the
 /// reader only keeps the current block, the header and the filename of the
-/// current file, and the parser state, about 1.6 KiB. It validates the archive
+/// current file, and the parser state, about 1.7 KiB. It validates the archive
 /// like [`TarArchiveRef::new`] does and, like [`TarArchiveRef::entries`], only
 /// reports regular files.
 ///

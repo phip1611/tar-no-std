@@ -83,6 +83,8 @@ enum State {
         header_block_index: usize,
         /// Payload bytes of the header in the next blocks.
         remaining: usize,
+        /// Whether the header applies to all following entries (type `g`).
+        global: bool,
     },
     /// The next block must be the second zero block of the terminator.
     FirstZeroBlock,
@@ -99,7 +101,7 @@ enum State {
 /// for the next block. If you can, [`TarStreamReader`] is simpler: it pulls
 /// the blocks itself and takes care of the payload and the end of the archive.
 ///
-/// The parser keeps about 350 bytes of state, most of it for a GNU long name
+/// The parser keeps about 400 bytes of state, most of it for a GNU long name
 /// or PAX path. It validates each header like [`TarArchiveRef::new`] does:
 /// checksums, type flags, payload sizes, and the double-zero terminator.
 ///
@@ -176,6 +178,9 @@ pub struct TarStreamParser {
     long_name: Option<TarFormatString<POSIX_1003_MAX_FILENAME_LEN>>,
     /// Scanner of the records of the current PAX extended header.
     pax: PaxScanner,
+    /// Index of the last PAX extended header and the value of its `size`
+    /// record, which must match the size in the next entry header.
+    pax_size: Option<(usize, u64)>,
 }
 
 impl Default for TarStreamParser {
@@ -192,7 +197,8 @@ impl TarStreamParser {
             state: State::Header,
             block_index: 0,
             long_name: None,
-            pax: PaxScanner::new(),
+            pax: PaxScanner::new(false),
+            pax_size: None,
         }
     }
 
@@ -243,6 +249,7 @@ impl TarStreamParser {
             State::Pax {
                 header_block_index,
                 remaining,
+                global,
             } => {
                 let len = remaining.min(BLOCKSIZE);
                 self.pax
@@ -253,9 +260,13 @@ impl TarStreamParser {
                     self.state = State::Pax {
                         header_block_index,
                         remaining,
+                        global,
                     };
                 } else {
                     self.state = State::Header;
+                    if !global {
+                        self.pax_size = self.pax.size().map(|size| (header_block_index, size));
+                    }
                 }
                 Ok(None)
             }
@@ -312,13 +323,26 @@ impl TarStreamParser {
                     }
                     return Ok(None);
                 }
-                if typeflag == TypeFlag::XHDTYPE {
-                    self.pax = PaxScanner::new();
+                if !typeflag.is_extension_header() {
+                    if let Some((pax_block_index, pax_size)) = self.pax_size.take() {
+                        if u64::try_from(size) != Ok(pax_size) {
+                            return Err(CorruptDataError::UnsupportedPaxRecord {
+                                block_index: pax_block_index,
+                            });
+                        }
+                    }
+                }
+                if matches!(typeflag, TypeFlag::XHDTYPE | TypeFlag::XGLTYPE) {
+                    let global = typeflag == TypeFlag::XGLTYPE;
+                    self.pax = PaxScanner::new(global);
                     if size > 0 {
                         self.state = State::Pax {
                             header_block_index: block_index,
                             remaining: size,
+                            global,
                         };
+                    } else if !global {
+                        self.pax_size = None;
                     }
                     return Ok(None);
                 }
@@ -559,11 +583,45 @@ mod tests {
     }
 
     #[test]
-    fn test_stream_rejects_too_long_pax_path() {
-        let data = include_bytes!("../tests/gnu_tar_posix_too_long_name.tar");
-        let error = CorruptDataError::FilenameTooLong { block_index: 7 };
-        assert_eq!(parse_streaming(data), Err(error));
-        assert_eq!(TarArchiveRef::new(data), Err(error));
+    fn test_stream_rejects_unsupported_pax_archives() {
+        for (data, error) in [
+            (
+                &include_bytes!("../tests/gnu_tar_posix_too_long_name.tar")[..],
+                CorruptDataError::FilenameTooLong { block_index: 7 },
+            ),
+            (
+                include_bytes!("../tests/gnu_tar_posix_sparse.tar"),
+                CorruptDataError::UnsupportedPaxRecord { block_index: 0 },
+            ),
+        ] {
+            assert_eq!(parse_streaming(data), Err(error));
+            assert_eq!(TarArchiveRef::new(data), Err(error));
+        }
+    }
+
+    #[test]
+    fn test_stream_checks_pax_size() {
+        // Setup: replace the records of the first PAX extended header, which
+        // describes a file of 513 bytes.
+        let mut data = include_bytes!("../tests/gnu_tar_pax.tar").to_vec();
+        for (records, result) in [
+            (&b"12 size=513\n"[..], Ok(())),
+            (
+                b"12 size=999\n",
+                Err(CorruptDataError::UnsupportedPaxRecord { block_index: 0 }),
+            ),
+        ] {
+            let mut block = header_block(&data);
+            let size = format!("{:011o}\0", records.len());
+            block[124..136].copy_from_slice(size.as_bytes());
+            write_checksum(&mut block);
+            data[..BLOCKSIZE].copy_from_slice(&block);
+            data[BLOCKSIZE..2 * BLOCKSIZE].fill(0);
+            data[BLOCKSIZE..BLOCKSIZE + records.len()].copy_from_slice(records);
+
+            assert_eq!(parse_streaming(&data).map(|_| ()), result);
+            assert_eq!(TarArchiveRef::new(&data).map(|_| ()), result);
+        }
     }
 
     #[test]
