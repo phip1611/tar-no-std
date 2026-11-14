@@ -45,12 +45,22 @@
 //! ```rust
 //! use tar_no_std::TarArchiveRef;
 //!
-//! // also works in no_std environment (except the println!, of course)
+//! // For example, an init ramdisk that the bootloader loaded into memory.
 //! let archive = include_bytes!("../tests/gnu_tar_default.tar");
-//! let archive = TarArchiveRef::new(archive).unwrap();
-//! // Vec needs an allocator of course, but the library itself doesn't need one
-//! let entries = archive.entries().collect::<Vec<_>>();
-//! println!("{:#?}", entries);
+//! let archive = TarArchiveRef::new(archive).expect("archive should be valid");
+//!
+//! // List all files, without allocating.
+//! for entry in archive.entries() {
+//!     let name = entry.filename();
+//!     println!("{} ({} bytes)", name.as_str().unwrap_or("?"), entry.size());
+//! }
+//!
+//! // Find a file by its name and read it.
+//! let file = archive
+//!     .entries()
+//!     .find(|entry| entry.filename().as_str() == Ok("hello_world.txt"))
+//!     .expect("archive should contain the file");
+//! assert_eq!(file.data_as_str(), Ok("Hello World\n"));
 //! ```
 //!
 //! ## Streaming
@@ -66,23 +76,34 @@
 //! that is not read is skipped.
 //!
 //! ```rust
+//! use std::io::{ErrorKind, Read};
 //! use tar_no_std::TarStreamReader;
 //!
-//! let archive = include_bytes!("../tests/gnu_tar_default.tar");
-//! let mut blocks = archive.chunks_exact(512);
-//! let mut reader = TarStreamReader::new(|buf: &mut [u8; 512]| {
-//!     let Some(block) = blocks.next() else {
-//!         return Ok::<_, ()>(false);
-//!     };
-//!     buf.copy_from_slice(block);
-//!     Ok(true)
-//! });
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Stands in for a file that does not fit into memory.
+//!     let mut file: &[u8] = include_bytes!("../tests/gnu_tar_default.tar");
+//!     let mut reader = TarStreamReader::new(|block: &mut [u8; 512]| {
+//!         match file.read_exact(block) {
+//!             Ok(()) => Ok(true),
+//!             Err(e) if e.kind() == ErrorKind::UnexpectedEof => Ok(false),
+//!             Err(e) => Err(e),
+//!         }
+//!     });
 //!
-//! let mut buf = [0; 64];
-//! while let Some(mut entry) = reader.next_entry().unwrap() {
-//!     println!("{:?} ({} bytes)", entry.filename(), entry.size());
-//!     let n = entry.read_payload(&mut buf).unwrap();
-//!     println!("starts with {:?}", &buf[..n]);
+//!     // Copy each file in small chunks, for example to a flash device.
+//!     let mut chunk = [0; 64];
+//!     while let Some(mut entry) = reader.next_entry()? {
+//!         let name = entry.filename();
+//!         println!("{} ({} bytes)", name.as_str()?, entry.size());
+//!         loop {
+//!             let n = entry.read_payload(&mut chunk)?;
+//!             if n == 0 {
+//!                 break;
+//!             }
+//!             // Write `chunk[..n]` to the destination.
+//!         }
+//!     }
+//!     Ok(())
 //! }
 //! ```
 //!
@@ -94,21 +115,27 @@
 //! ```rust
 //! use tar_no_std::{StreamEvent, TarStreamParser};
 //!
-//! let archive = include_bytes!("../tests/gnu_tar_default.tar");
+//! # fn main() -> Result<(), tar_no_std::CorruptDataError> {
+//! # let archive = include_bytes!("../tests/gnu_tar_default.tar");
+//! # let blocks = archive.chunks_exact(512).map(|b| b.try_into().unwrap());
 //! let mut parser = TarStreamParser::new();
-//! // Each block would be delivered by a callback.
-//! for block in archive.chunks_exact(512) {
-//!     match parser.parse_block(block.try_into().unwrap()).unwrap() {
+//! // For example, blocks that a network stack delivers one at a time.
+//! for block in blocks {
+//!     match parser.parse_block(block)? {
 //!         Some(StreamEvent::Entry { filename, size, .. }) => {
-//!             println!("{filename:?} ({size} bytes)");
+//!             println!("{} ({size} bytes)", filename.as_str().unwrap_or("?"));
 //!         }
 //!         Some(StreamEvent::Data { data, .. }) => {
+//!             // Write `data` to the destination.
 //!             println!("  {} bytes", data.len());
 //!         }
 //!         Some(StreamEvent::End) | None => {}
 //!     }
 //! }
-//! parser.finish().unwrap();
+//! // Once the input ended, check that the archive was complete.
+//! parser.finish()?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Cargo Features

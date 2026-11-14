@@ -134,7 +134,8 @@ enum State {
 ///         match self.parser.parse_block(block)? {
 ///             Some(StreamEvent::Entry { filename, size, .. }) => {
 ///                 // For example, create the file.
-///                 println!("{filename:?} ({size} bytes)");
+///                 let name = filename.as_str().unwrap_or("?");
+///                 println!("{name} ({size} bytes)");
 ///                 self.files += 1;
 ///             }
 ///             Some(StreamEvent::Data { data, remaining }) => {

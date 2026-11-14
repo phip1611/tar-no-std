@@ -35,26 +35,70 @@ application, which needs "a bunch of files" from an archive (like an "init
 ramdisk"). The Tar file could for example come as a Multiboot2 boot module
 provided by the bootloader.
 
-## Example
+## Examples
+
+Read a file from an archive in memory:
 
 ```rust
 use tar_no_std::TarArchiveRef;
 
-fn main() {
-    // also works in no_std environment (except the println!, of course)
-    let archive = include_bytes!("../tests/gnu_tar_default.tar");
-    let archive = TarArchiveRef::new(archive).unwrap();
-    // Vec needs an allocator of course, but the library itself doesn't need one
-    let entries = archive.entries().collect::<Vec<_>>();
-    println!("{:#?}", entries);
+// For example, an init ramdisk that the bootloader loaded into memory.
+let archive = include_bytes!("../tests/gnu_tar_default.tar");
+let archive = TarArchiveRef::new(archive).expect("archive should be valid");
+
+// List all files, without allocating.
+for entry in archive.entries() {
+    let name = entry.filename();
+    println!("{} ({} bytes)", name.as_str().unwrap_or("?"), entry.size());
+}
+
+// Find a file by its name and read it.
+let file = archive
+    .entries()
+    .find(|entry| entry.filename().as_str() == Ok("hello_world.txt"))
+    .expect("archive should contain the file");
+assert_eq!(file.data_as_str(), Ok("Hello World\n"));
+```
+
+Read an archive that does not fit into memory, block by block:
+
+```rust
+use std::io::{ErrorKind, Read};
+use tar_no_std::TarStreamReader;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Stands in for a file that does not fit into memory.
+    let mut file: &[u8] = include_bytes!("../tests/gnu_tar_default.tar");
+    let mut reader = TarStreamReader::new(|block: &mut [u8; 512]| {
+        match file.read_exact(block) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => Ok(false),
+            Err(e) => Err(e),
+        }
+    });
+
+    // Copy each file in small chunks, for example to a flash device.
+    let mut chunk = [0; 64];
+    while let Some(mut entry) = reader.next_entry()? {
+        let name = entry.filename();
+        println!("{} ({} bytes)", name.as_str()?, entry.size());
+        loop {
+            let n = entry.read_payload(&mut chunk)?;
+            if n == 0 {
+                break;
+            }
+            // Write `chunk[..n]` to the destination.
+        }
+    }
+    Ok(())
 }
 ```
 
 ## Documentation
 
-Archives that do not fit into memory can also be read block by block. See the
-[documentation on docs.rs](https://docs.rs/tar-no-std) for streaming, Cargo
-features, compressed archives, and the MSRV.
+See the [documentation on docs.rs](https://docs.rs/tar-no-std) for more
+examples, such as for blocks that are pushed to you, Cargo features, compressed
+archives, and the MSRV.
 
 ## Fuzzing
 
