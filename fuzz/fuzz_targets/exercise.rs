@@ -3,9 +3,10 @@
 use core::convert::Infallible;
 use core::hint::black_box;
 
-use tar_no_std::{MIN_BLOCK_COUNT, StreamError, TarArchiveRef, TarFormatString, TarStreamReader};
+use tar_no_std::{
+    BLOCKSIZE, MIN_BLOCK_COUNT, StreamError, TarArchiveRef, TarFormatString, TarStreamReader,
+};
 
-const BLOCKSIZE: usize = 512;
 const FILENAME_LEN: usize = 256;
 
 pub fn archive(archive: &TarArchiveRef<'_>) {

@@ -141,8 +141,9 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-/// Each Archive Entry (either Header or Data Block) is a block of 512 bytes.
-const BLOCKSIZE: usize = 512;
+/// Size of a Tar block in bytes. A Tar archive is a sequence of such blocks,
+/// each holding either a header or payload.
+pub const BLOCKSIZE: usize = 512;
 /// Maximum filename length of the base Tar format including the terminating NULL-byte.
 const NAME_LEN: usize = 100;
 /// Maximum long filename length of the base Tar format including the prefix

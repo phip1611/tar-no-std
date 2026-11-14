@@ -12,6 +12,8 @@
 - Added `TarStreamParser` for archives whose blocks are pushed to the caller,
   for example by an interrupt or a network stack. It reports each block as a
   `StreamEvent`.
+- `BLOCKSIZE` is now public, for example to size the buffers of a
+  `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
   prefix, like `ArchiveEntry::filename`.
 
