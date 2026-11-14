@@ -441,7 +441,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 
         // Ignore directory entries, i.e. yield only regular files. Works as
         // filenames in tarballs are fully specified, e.g. dirA/dirB/file1
-        while !hdr.is_regular_file() {
+        while !hdr.is_regular_file(&hdr.filename()) {
             debug!("Skipping non-regular entry of type {:?}", hdr.typeflag);
 
             // Update properties.

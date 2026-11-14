@@ -228,7 +228,7 @@ impl TarStreamParser {
                     return Ok(None);
                 }
                 let (_, size) = parse_header(block_index, hdr)?;
-                let skip = !hdr.is_regular_file();
+                let skip = !hdr.is_regular_file(&hdr.filename());
                 if size > 0 {
                     self.state = State::Payload {
                         header_block_index: block_index,
