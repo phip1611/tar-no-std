@@ -130,6 +130,16 @@ pub enum CorruptDataError {
         /// Index of the header of the long name or PAX path.
         block_index: usize,
     },
+    /// The PAX extended header at `block_index` has a record that cannot be
+    /// applied.
+    ///
+    /// These are the records of GNU sparse files, a `size` that differs from
+    /// the size in the next header, and a `path` or `size` in a global
+    /// header.
+    UnsupportedPaxRecord {
+        /// Index of the PAX extended header.
+        block_index: usize,
+    },
 }
 
 impl Display for CorruptDataError {
@@ -157,6 +167,10 @@ impl Display for CorruptDataError {
             Self::FilenameTooLong { block_index } => write!(
                 f,
                 "filename at block {block_index} is longer than {POSIX_1003_MAX_FILENAME_LEN} bytes"
+            ),
+            Self::UnsupportedPaxRecord { block_index } => write!(
+                f,
+                "PAX header at block {block_index} has an unsupported record"
             ),
         }
     }
@@ -289,6 +303,9 @@ impl<'a> TarArchiveRef<'a> {
         let header_iter = ArchiveHeaderIterator::new(data);
         let total_block_count = data.len() / BLOCKSIZE;
         let mut block_index = 0;
+        // Index of the last PAX extended header and the value of its `size`
+        // record, which must match the size in the next entry header.
+        let mut pax_size: Option<(usize, u64)> = None;
 
         loop {
             if block_index >= total_block_count {
@@ -329,14 +346,27 @@ impl<'a> TarArchiveRef<'a> {
             if is_long_name && size > MAX_LONG_NAME_PAYLOAD {
                 return Err(CorruptDataError::FilenameTooLong { block_index });
             }
+            if !typeflag.is_extension_header() {
+                if let Some((pax_block_index, pax_size)) = pax_size.take() {
+                    if u64::try_from(size) != Ok(pax_size) {
+                        return Err(CorruptDataError::UnsupportedPaxRecord {
+                            block_index: pax_block_index,
+                        });
+                    }
+                }
+            }
             // TarStreamParser reports errors in the records before it knows
             // that the payload is incomplete, so scan what is there first.
-            if typeflag == TypeFlag::XHDTYPE {
+            if matches!(typeflag, TypeFlag::XHDTYPE | TypeFlag::XGLTYPE) {
                 let start = (block_index + 1) * BLOCKSIZE;
                 let end = start.saturating_add(size).min(data.len());
-                PaxScanner::new()
+                let mut scanner = PaxScanner::new(typeflag == TypeFlag::XGLTYPE);
+                scanner
                     .feed(&data[start..end], &mut None)
                     .map_err(|error| error.into_corrupt_data_error(block_index))?;
+                if typeflag == TypeFlag::XHDTYPE {
+                    pax_size = scanner.size().map(|size| (block_index, size));
+                }
             }
             if next_block_index > total_block_count {
                 return Err(CorruptDataError::PayloadExtendsBeyondArchive { block_index });
@@ -498,13 +528,14 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
                 continue;
             }
             if typeflag == TypeFlag::XHDTYPE {
-                PaxScanner::new()
+                PaxScanner::new(false)
                     .feed(self.payload(block_index, hdr), &mut long_name)
                     .expect("PAX records should be valid after successful validation");
                 continue;
             }
-            // Links are skipped, so their long names are not needed.
-            if typeflag == TypeFlag::GNULONGLINK {
+            // Links are skipped, so their long names are not needed. Global
+            // PAX headers have no records that are applied.
+            if matches!(typeflag, TypeFlag::GNULONGLINK | TypeFlag::XGLTYPE) {
                 continue;
             }
 
@@ -941,9 +972,24 @@ mod tests {
         assert_eq!(entries[0].1, "labeled\n");
     }
 
+    /// Returns `gnu_tar_pax.tar` with `records` as the payload of the first
+    /// PAX extended header, which describes `bye_world_513b.txt`.
+    fn with_pax_records(records: &[u8]) -> Vec<u8> {
+        let mut data = include_bytes!("../tests/gnu_tar_pax.tar").to_vec();
+        assert_eq!(data[TYPEFLAG_OFFSET], TypeFlag::XHDTYPE.to_byte());
+        let payload = &mut data[BLOCKSIZE..2 * BLOCKSIZE];
+        payload.fill(0);
+        payload[..records.len()].copy_from_slice(records);
+        let size = format!("{:011o}\0", records.len());
+        data[124..136].copy_from_slice(size.as_bytes());
+        write_first_header_checksum(&mut data);
+        data
+    }
+
     /// Tests that PAX paths are applied, for long paths and for UTF-8 names.
     ///
-    /// The archives with PAX paths were created with GNU tar 1.35:
+    /// The archives with PAX paths were created with GNU tar 1.35, the sparse
+    /// one with the additional `--sparse`:
     ///
     /// ```text
     /// tar --format=posix --owner=0 --group=0 --numeric-owner --mtime=@0 \
@@ -973,6 +1019,27 @@ mod tests {
         assert_eq!(
             TarArchiveRef::new(include_bytes!("../tests/gnu_tar_posix_too_long_name.tar")),
             Err(CorruptDataError::FilenameTooLong { block_index: 7 })
+        );
+    }
+
+    #[test]
+    fn test_rejects_pax_sparse_file() {
+        assert_eq!(
+            TarArchiveRef::new(include_bytes!("../tests/gnu_tar_posix_sparse.tar")),
+            Err(CorruptDataError::UnsupportedPaxRecord { block_index: 0 })
+        );
+    }
+
+    #[test]
+    fn test_pax_size_must_match_header() {
+        let data = with_pax_records(b"12 size=513\n");
+        let archive = TarArchiveRef::new(data.as_slice()).unwrap();
+        assert_eq!(archive.entries().next().unwrap().size(), 513);
+
+        let data = with_pax_records(b"12 size=999\n");
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::UnsupportedPaxRecord { block_index: 0 })
         );
     }
 

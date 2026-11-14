@@ -234,6 +234,15 @@ impl TypeFlag {
         }
     }
 
+    /// Whether this is an extension header that describes the next entry,
+    /// such as a GNU long name or a PAX extended header.
+    pub(crate) const fn is_extension_header(self) -> bool {
+        matches!(
+            self,
+            Self::XHDTYPE | Self::XGLTYPE | Self::GNULONGNAME | Self::GNULONGLINK
+        )
+    }
+
     /// Whether this entry has payload blocks described by the size field.
     pub(crate) const fn has_payload(self) -> bool {
         self.is_regular_file()

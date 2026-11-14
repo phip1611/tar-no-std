@@ -24,15 +24,14 @@
 //! filenames. Other PAX records, such as high-precision timestamps, are
 //! skipped.
 //!
-//! Archives that rely on unsupported extensions do not work. GNU sparse files
-//! in GNU format are rejected with [`CorruptDataError::InvalidTypeFlag`].
-//! Sparse files in PAX format, and PAX sizes, which GNU tar writes for files
-//! larger than 8GiB, are not applied, so such files are read with wrong
-//! content. Other vendor entries, such as GNU incremental dumps or volume
-//! labels, are skipped. The maximum supported filename length is 256 characters
-//! excluding the NULL-byte, and the maximum supported file size is 8GiB.
-//! Directories, links, and other special entries are skipped; iteration yields
-//! only regular files, preserving directory paths encoded in their names.
+//! Archives that rely on unsupported extensions are rejected. These are GNU
+//! sparse files, and PAX sizes that differ from the regular header, which GNU
+//! tar writes for files larger than 8GiB. Other vendor entries, such as GNU
+//! incremental dumps or volume labels, are skipped. The maximum supported
+//! filename length is 256 characters excluding the NULL-byte, and the maximum
+//! supported file size is 8GiB. Directories, links, and other special entries
+//! are skipped; iteration yields only regular files, preserving directory paths
+//! encoded in their names.
 //!
 //! ## Use Case
 //!

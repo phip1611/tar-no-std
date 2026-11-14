@@ -46,6 +46,11 @@
   GNU tar and bsdtar do. Before, the filename was taken from the regular
   header, which holds a cut-off or replacement name for long paths and, in
   Python's default format, for non-ASCII names.
+- Archives are now rejected with the new
+  `CorruptDataError::UnsupportedPaxRecord` if they have GNU sparse files in
+  PAX format, or a PAX `size` that differs from the regular header, which
+  writers use for files larger than 8GiB. Before, sparse files were read with
+  wrong content, and such large files failed with misleading errors.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
