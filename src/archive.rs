@@ -41,8 +41,7 @@ impl<'a> ArchiveEntry<'a> {
         }
     }
 
-    /// Filename of the entry with a maximum of 100 characters (including the
-    /// terminating NULL-byte).
+    /// Filename of the entry, including the ustar prefix if there is one.
     #[must_use]
     pub const fn filename(&self) -> TarFormatString<{ POSIX_1003_MAX_FILENAME_LEN }> {
         self.filename
