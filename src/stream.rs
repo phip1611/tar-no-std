@@ -295,7 +295,7 @@ fn parse_header(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TarArchiveRef;
+    use crate::{TYPEFLAG_OFFSET, TarArchiveRef};
     use std::string::{String, ToString};
     use std::vec::Vec;
 
@@ -397,7 +397,7 @@ mod tests {
     fn test_stream_reports_contiguous_file() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
         let mut block = header_block(&data);
-        block[156] = b'7';
+        block[TYPEFLAG_OFFSET] = TypeFlag::CONTTYPE.to_byte();
         write_checksum(&mut block);
         data[..BLOCKSIZE].copy_from_slice(&block);
 
@@ -511,7 +511,8 @@ mod tests {
     #[test]
     fn test_rejects_invalid_type_flag() {
         let mut block = header_block(include_bytes!("../tests/gnu_tar_default.tar"));
-        block[156] = b'?';
+        // Unknown type flag.
+        block[TYPEFLAG_OFFSET] = b'?';
         write_checksum(&mut block);
         assert_eq!(
             TarStreamParser::new().parse_block(&block),

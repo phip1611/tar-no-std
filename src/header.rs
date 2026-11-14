@@ -192,6 +192,24 @@ impl TypeFlag {
         matches!(self, Self::REGTYPE | Self::AREGTYPE | Self::CONTTYPE)
     }
 
+    /// Returns the type flag as it is stored in the header.
+    #[cfg(test)]
+    pub(crate) const fn to_byte(self) -> u8 {
+        match self {
+            Self::REGTYPE => b'0',
+            Self::AREGTYPE => b'\0',
+            Self::LINK => b'1',
+            Self::SYMTYPE => b'2',
+            Self::CHRTYPE => b'3',
+            Self::BLKTYPE => b'4',
+            Self::DIRTYPE => b'5',
+            Self::FIFOTYPE => b'6',
+            Self::CONTTYPE => b'7',
+            Self::XHDTYPE => b'x',
+            Self::XGLTYPE => b'g',
+        }
+    }
+
     /// Whether this entry has payload blocks described by the size field.
     pub(crate) const fn has_payload(self) -> bool {
         self.is_regular_file() || matches!(self, Self::XHDTYPE | Self::XGLTYPE)
@@ -399,7 +417,7 @@ impl PosixHeader {
 #[cfg(test)]
 mod tests {
     use crate::BLOCKSIZE;
-    use crate::header::{PosixHeader, TypeFlag};
+    use crate::header::{PosixHeader, TypeFlag, TypeFlagRaw};
     use std::mem::size_of;
 
     /// Returns the [`PosixHeader`] at the beginning of the Tar archive.
@@ -413,6 +431,15 @@ mod tests {
         let archive = bytes_to_archive(include_bytes!("../tests/gnu_tar_default.tar"));
         assert_eq!(archive.name.as_str(), Ok("bye_world_513b.txt"));
         println!("{archive:#?}'");
+    }
+
+    #[test]
+    fn test_type_flag_to_byte() {
+        for byte in 0..=u8::MAX {
+            if let Ok(type_flag) = TypeFlagRaw(byte).try_to_type_flag() {
+                assert_eq!(type_flag.to_byte(), byte);
+            }
+        }
     }
 
     #[test]

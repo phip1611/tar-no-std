@@ -161,6 +161,11 @@ const NAME_LEN: usize = 100;
 const POSIX_1003_MAX_FILENAME_LEN: usize = 256;
 /// Maximum length of the prefix in Posix tar format.
 const PREFIX_LEN: usize = 155;
+/// Offset of the type flag in a header block.
+///
+/// Tests overwrite it to create entries of other types.
+#[cfg(test)]
+const TYPEFLAG_OFFSET: usize = core::mem::offset_of!(PosixHeader, typeflag);
 
 mod archive;
 mod header;

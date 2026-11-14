@@ -471,7 +471,7 @@ impl<'a> Iterator for ArchiveEntryIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TarFormatOctal;
+    use crate::{TYPEFLAG_OFFSET, TarFormatOctal, TypeFlag};
     use std::vec::Vec;
 
     #[test]
@@ -727,7 +727,8 @@ mod tests {
     #[test]
     fn test_constructor_rejects_invalid_type_flag() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
-        data[156] = b'?';
+        // Unknown type flag.
+        data[TYPEFLAG_OFFSET] = b'?';
         write_first_header_checksum(&mut data);
 
         assert_eq!(
@@ -782,7 +783,7 @@ mod tests {
     #[test]
     fn test_contiguous_file_is_regular_file() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
-        data[156] = b'7';
+        data[TYPEFLAG_OFFSET] = TypeFlag::CONTTYPE.to_byte();
         write_first_header_checksum(&mut data);
 
         let archive = TarArchiveRef::new(data.as_slice()).unwrap();
