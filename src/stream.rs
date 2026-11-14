@@ -19,7 +19,7 @@ pub enum StreamEvent<'a> {
     /// the next blocks produce [`StreamEvent::Data`] events.
     Entry {
         /// Header of the file.
-        header: &'a PosixHeader,
+        posix_header: &'a PosixHeader,
         /// Size of the file in bytes.
         size: usize,
     },
@@ -91,9 +91,9 @@ enum State {
 ///     /// Called for every 512-byte block of the archive, as it arrives.
 ///     fn on_block(&mut self, block: &[u8; 512]) -> Result<(), CorruptDataError> {
 ///         match self.parser.parse_block(block)? {
-///             Some(StreamEvent::Entry { header, size }) => {
+///             Some(StreamEvent::Entry { posix_header, size }) => {
 ///                 // For example, create the file.
-///                 println!("{:?} ({size} bytes)", header.filename());
+///                 println!("{:?} ({size} bytes)", posix_header.filename());
 ///                 self.files += 1;
 ///             }
 ///             Some(StreamEvent::Data { data, remaining }) => {
@@ -230,7 +230,10 @@ impl TarStreamParser {
                     );
                     return Ok(None);
                 }
-                Ok(Some(StreamEvent::Entry { header: hdr, size }))
+                Ok(Some(StreamEvent::Entry {
+                    posix_header: hdr,
+                    size,
+                }))
             }
         }
     }
@@ -303,9 +306,9 @@ mod tests {
         let mut entries: Vec<ParsedEntry> = Vec::new();
         for (block_index, block) in blocks(data).enumerate() {
             match parser.parse_block(block)? {
-                Some(StreamEvent::Entry { header, size }) => {
+                Some(StreamEvent::Entry { posix_header, size }) => {
                     assert!(
-                        header
+                        posix_header
                             .typeflag
                             .try_to_type_flag()
                             .unwrap()
@@ -313,7 +316,7 @@ mod tests {
                     );
                     entries.push(ParsedEntry {
                         block_index,
-                        filename: header.filename().as_str().unwrap().to_string(),
+                        filename: posix_header.filename().as_str().unwrap().to_string(),
                         data: Vec::with_capacity(size),
                     });
                 }
@@ -420,7 +423,7 @@ mod tests {
         assert_eq!(
             parser.parse_block(block),
             Ok(Some(StreamEvent::Entry {
-                header: PosixHeader::from_block(block, 0),
+                posix_header: PosixHeader::from_block(block, 0),
                 size: 513
             }))
         );
@@ -444,8 +447,8 @@ mod tests {
         let block = blocks.next().unwrap();
         assert!(matches!(
             parser.parse_block(block),
-            Ok(Some(StreamEvent::Entry { header, size: 513 }))
-                if header.filename().as_str() == Ok("hello_world_513b.txt")
+            Ok(Some(StreamEvent::Entry { posix_header, size: 513 }))
+                if posix_header.filename().as_str() == Ok("hello_world_513b.txt")
         ));
     }
 

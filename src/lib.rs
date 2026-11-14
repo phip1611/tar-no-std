@@ -96,8 +96,8 @@
 //! // Each block would be delivered by a callback.
 //! for block in archive.chunks_exact(512) {
 //!     match parser.parse_block(block.try_into().unwrap()).unwrap() {
-//!         Some(StreamEvent::Entry { header, size }) => {
-//!             println!("{:?} ({size} bytes)", header.filename());
+//!         Some(StreamEvent::Entry { posix_header, size }) => {
+//!             println!("{:?} ({size} bytes)", posix_header.filename());
 //!         }
 //!         Some(StreamEvent::Data { data, .. }) => println!("  {} bytes", data.len()),
 //!         Some(StreamEvent::End) | None => {}
