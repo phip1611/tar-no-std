@@ -10,7 +10,10 @@ use of <https://crates.io/crates/tar> instead.
 
 ## TL;DR
 
-Most ordinary Tar archives containing regular files will work.
+Read regular files from Tar archives in `no_std` environments without
+allocating, either from memory or block by block from a stream. Typical
+archives created by GNU tar, bsdtar, busybox, and Python's `tarfile` work,
+including long names of up to 256 bytes.
 
 ## Limitations
 
