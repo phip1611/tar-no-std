@@ -24,6 +24,8 @@
   of warn level, because skipping them is the expected behavior.
 - Contiguous files (type flag `7`) are now reported as regular files instead
   of being skipped, as the Tar spec requires.
+- `ArchiveEntry::posix_header` now returns a reference that borrows the
+  archive instead of the entry, like `ArchiveEntry::data`.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar

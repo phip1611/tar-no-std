@@ -66,7 +66,7 @@ impl<'a> ArchiveEntry<'a> {
 
     /// Returns the [`PosixHeader`] for the entry.
     #[must_use]
-    pub const fn posix_header(&self) -> &PosixHeader {
+    pub const fn posix_header(&self) -> &'a PosixHeader {
         self.posix_header
     }
 }
@@ -750,6 +750,14 @@ mod tests {
             TarArchiveRef::new(&data),
             Err(CorruptDataError::MissingTerminator)
         );
+    }
+
+    #[test]
+    fn test_header_outlives_entry() {
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_default.tar")).unwrap();
+        // Like `data()`, the header borrows the archive, not the entry.
+        let header = archive.entries().next().unwrap().posix_header();
+        assert_eq!(header.name.as_str(), Ok("bye_world_513b.txt"));
     }
 
     #[test]
