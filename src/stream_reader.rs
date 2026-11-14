@@ -434,7 +434,7 @@ mod tests {
             .collect()
     }
 
-    const ARCHIVES: [&[u8]; 13] = [
+    const ARCHIVES: [&[u8]; 14] = [
         include_bytes!("../tests/gnu_tar_default.tar"),
         include_bytes!("../tests/gnu_tar_default_with_dir.tar"),
         include_bytes!("../tests/gnu_tar_gnu.tar"),
@@ -446,6 +446,7 @@ mod tests {
         include_bytes!("../tests/gnu_tar_ustar_long.tar"),
         include_bytes!("../tests/gnu_tar_v7.tar"),
         include_bytes!("../tests/gnu_tar_gnu_long_names.tar"),
+        include_bytes!("../tests/gnu_tar_gnu_label.tar"),
         include_bytes!("../tests/mac_tar_ustar_with_dir.tar"),
         include_bytes!("../tests/weird_fuzzing_tarballs.tar"),
     ];

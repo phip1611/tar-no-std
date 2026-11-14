@@ -450,6 +450,7 @@ mod tests {
             include_bytes!("../tests/gnu_tar_ustar_long.tar"),
             include_bytes!("../tests/gnu_tar_v7.tar"),
             include_bytes!("../tests/gnu_tar_gnu_long_names.tar"),
+            include_bytes!("../tests/gnu_tar_gnu_label.tar"),
             include_bytes!("../tests/mac_tar_ustar_with_dir.tar"),
             include_bytes!("../tests/weird_fuzzing_tarballs.tar"),
         ] {
@@ -491,6 +492,20 @@ mod tests {
             parse_streaming(include_bytes!("../tests/gnu_tar_gnu_too_long_name.tar")),
             Err(CorruptDataError::FilenameTooLong { block_index: 7 })
         );
+    }
+
+    #[test]
+    fn test_stream_skips_vendor_entries() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        let mut block = header_block(&data);
+        // Vendor-specific entry.
+        block[TYPEFLAG_OFFSET] = b'I';
+        write_checksum(&mut block);
+        data[..BLOCKSIZE].copy_from_slice(&block);
+
+        let files = parse_files(&data);
+        assert_eq!(files[0].0, "hello_world_513b.txt");
+        assert_eq!(files, archive_entries(&data));
     }
 
     #[test]

@@ -188,6 +188,18 @@ pub enum TypeFlag {
     ///
     /// The payload holds the link target, terminated by a NULL-byte.
     GNULONGLINK = b'K',
+    /// GNU volume label, written by `tar --label`.
+    ///
+    /// It has no payload.
+    GNUVOLHDR = b'V',
+    /// Entry of a vendor-specific type from `A` to `Z`, as reserved by POSIX.
+    ///
+    /// Examples are GNU incremental dumps (`D`) and multi-volume continuations
+    /// (`M`), and Solaris extended headers (`X`). The payload is described by
+    /// the size field. GNU sparse files (`S`) are not included: their size
+    /// field does not describe all of their blocks, so they cannot be skipped
+    /// and are rejected.
+    VENDOR(u8),
 }
 
 impl TypeFlag {
@@ -217,6 +229,8 @@ impl TypeFlag {
             Self::XGLTYPE => b'g',
             Self::GNULONGNAME => b'L',
             Self::GNULONGLINK => b'K',
+            Self::GNUVOLHDR => b'V',
+            Self::VENDOR(byte) => byte,
         }
     }
 
@@ -225,7 +239,11 @@ impl TypeFlag {
         self.is_regular_file()
             || matches!(
                 self,
-                Self::XHDTYPE | Self::XGLTYPE | Self::GNULONGNAME | Self::GNULONGLINK
+                Self::XHDTYPE
+                    | Self::XGLTYPE
+                    | Self::GNULONGNAME
+                    | Self::GNULONGLINK
+                    | Self::VENDOR(_)
             )
     }
 }
@@ -248,6 +266,9 @@ impl TryFrom<TypeFlagRaw> for TypeFlag {
             b'g' => Ok(Self::XGLTYPE),
             b'L' => Ok(Self::GNULONGNAME),
             b'K' => Ok(Self::GNULONGLINK),
+            b'V' => Ok(Self::GNUVOLHDR),
+            b'S' => Err(InvalidTypeFlagError(b'S')),
+            vendor @ b'A'..=b'Z' => Ok(Self::VENDOR(vendor)),
             e => Err(InvalidTypeFlagError(e)),
         }
     }

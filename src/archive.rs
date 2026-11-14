@@ -886,6 +886,47 @@ mod tests {
     }
 
     #[test]
+    fn test_vendor_entry_is_skipped() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        // Vendor-specific entry.
+        data[TYPEFLAG_OFFSET] = b'I';
+        write_first_header_checksum(&mut data);
+
+        let archive = TarArchiveRef::new(data.as_slice()).unwrap();
+        let entry = archive.entries().next().unwrap();
+        assert_eq!(entry.filename().as_str(), Ok("hello_world_513b.txt"));
+    }
+
+    #[test]
+    fn test_rejects_gnu_sparse_file() {
+        let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
+        // GNU sparse file.
+        data[TYPEFLAG_OFFSET] = b'S';
+        write_first_header_checksum(&mut data);
+
+        assert_eq!(
+            TarArchiveRef::new(data.as_slice()),
+            Err(CorruptDataError::InvalidTypeFlag { block_index: 0 })
+        );
+    }
+
+    /// Tests that the volume label, whose size field is empty, is skipped.
+    ///
+    /// The archive was created like the ones with GNU long names, with the
+    /// additional `--label=VOLUME`.
+    #[test]
+    fn test_gnu_volume_label_is_skipped() {
+        let archive = TarArchiveRef::new(include_bytes!("../tests/gnu_tar_gnu_label.tar")).unwrap();
+        let entries = archive
+            .entries()
+            .map(|entry| (entry.filename(), entry.data_as_str().unwrap()))
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0.as_str(), Ok("file.txt"));
+        assert_eq!(entries[0].1, "labeled\n");
+    }
+
+    #[test]
     fn test_contiguous_file_is_regular_file() {
         let mut data = include_bytes!("../tests/gnu_tar_default.tar").to_vec();
         data[TYPEFLAG_OFFSET] = TypeFlag::CONTTYPE.to_byte();

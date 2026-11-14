@@ -26,8 +26,8 @@
 //! skipped; the following regular-file headers provide the filenames and sizes.
 //!
 //! Archives that rely on unsupported extensions do not work. GNU long names are
-//! supported, but archives with other GNU extension entries, such as sparse
-//! files or incremental dumps, are rejected with
+//! supported, and other vendor entries, such as GNU incremental dumps or volume
+//! labels, are skipped. GNU sparse files are rejected with
 //! [`CorruptDataError::InvalidTypeFlag`]. PAX records are skipped, so paths and
 //! file sizes that only exist in PAX records are not applied. The maximum
 //! supported filename length is 256 characters excluding the NULL-byte, and the

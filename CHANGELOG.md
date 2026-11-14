@@ -38,6 +38,10 @@
   `CorruptDataError::FilenameTooLong`. GNU long link names (type flag `K`) are
   skipped. `StreamEvent::Entry` has a new `filename` field that includes the
   long name.
+- Entries with vendor type flags (`A` to `Z`), such as GNU incremental dumps
+  or volume labels, are now skipped instead of rejected, like GNU tar does.
+  They are reported as `TypeFlag::VENDOR` and `TypeFlag::GNUVOLHDR`. GNU
+  sparse files (`S`) are still rejected.
 - `BLOCKSIZE` is now public, for example to size the buffers of a
   `BlockSource`.
 - Added `PosixHeader::filename`. It returns the filename including the ustar
